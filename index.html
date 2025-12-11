@@ -18,6 +18,7 @@
             --secondary-blue: #93c5fd; /* Blue 300 */
             --accent-red: #ef4444; /* Red 500 */
             --accent-green: #10b981; /* Emerald 500 */
+            --accent-orange: #f97316; /* Orange 500 */
             --border-color: #334155; /* Slate 700 */
             --card-bg: #1e293b; /* Slate 800 */
             --input-bg: #334155; /* Slate 700 */
@@ -84,6 +85,10 @@
             border-top-color: var(--accent-green);
         }
 
+        .card-border-orange {
+            border-top-color: var(--accent-orange);
+        }
+
         .input-style {
             background-color: var(--input-bg);
             border-color: var(--border-color);
@@ -94,8 +99,10 @@
         .text-aero-blue { color: var(--primary-blue); }
         .text-aero-light { color: var(--main-text-color); }
         .text-aero-green { color: var(--accent-green); }
+        .text-aero-orange { color: var(--accent-orange); }
         .bg-aero-blue { background-color: var(--primary-blue); }
         .bg-aero-green { background-color: var(--accent-green); }
+        .bg-aero-orange { background-color: var(--accent-orange); }
         .text-red-400 { color: var(--accent-red); }
         .bg-red-600 { background-color: var(--accent-red); }
 
@@ -137,12 +144,140 @@
         .airdrop-glow {
             animation: pulse-glow 2s infinite;
         }
+
+        /* Modal de autenticación */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(0, 0, 0, 0.7);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            backdrop-filter: blur(5px);
+        }
+        
+        .modal-content {
+            background-color: var(--card-bg);
+            border-radius: 12px;
+            padding: 2rem;
+            max-width: 400px;
+            width: 90%;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
+            border: 1px solid var(--border-color);
+        }
+        
+        /* Botones de autenticación */
+        .auth-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            width: 100%;
+            padding: 12px;
+            border-radius: 8px;
+            font-weight: 600;
+            margin-bottom: 12px;
+            transition: all 0.2s;
+            border: none;
+            cursor: pointer;
+        }
+        
+        .auth-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        }
+        
+        .auth-btn-google {
+            background: white;
+            color: #333;
+            border: 1px solid #ddd;
+        }
+        
+        .auth-btn-google:hover {
+            background: #f8f9fa;
+        }
+        
+        .auth-btn-apple {
+            background: black;
+            color: white;
+            border: 1px solid #333;
+        }
+        
+        .auth-btn-apple:hover {
+            background: #1a1a1a;
+        }
+        
+        .auth-btn-logout {
+            background: var(--accent-red);
+            color: white;
+            border: none;
+        }
+        
+        .auth-btn-logout:hover {
+            background: #dc2626;
+        }
+        
+        /* Avatar de usuario */
+        .user-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 2px solid var(--primary-blue);
+        }
+        
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        /* Estado de autenticación */
+        .auth-required {
+            position: relative;
+        }
+        
+        .auth-required::after {
+            content: "🔒";
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            font-size: 12px;
+        }
     </style>
     <script type="module">
         // Importaciones de Firebase
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, collection, addDoc, query, onSnapshot, where, getDocs, setDoc, doc, Timestamp, orderBy, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { 
+            getAuth, 
+            signInAnonymously, 
+            onAuthStateChanged,
+            GoogleAuthProvider,
+            signInWithPopup,
+            signInWithRedirect,
+            getRedirectResult,
+            signOut,
+            OAuthProvider
+        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { 
+            getFirestore, 
+            collection, 
+            addDoc, 
+            query, 
+            onSnapshot, 
+            where, 
+            getDocs, 
+            setDoc, 
+            doc, 
+            Timestamp, 
+            orderBy, 
+            getDoc,
+            updateDoc
+        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         
         // --- Configuración de Firebase ---
         const firebaseConfig = {
@@ -156,10 +291,10 @@
         };
 
         // --- Constantes de Tokenomics ---
-        const INITIAL_HOLDER_COUNT = 18; // Base de holders
-        const HOLDER_GOAL = 10000;      // Objetivo de holders
-        const TOTAL_SUPPLY_BASE = 800000; // Suministro total base
-        const MONTHLY_BURN = 100;       // Quema mensual
+        const INITIAL_HOLDER_COUNT = 18;
+        const HOLDER_GOAL = 10000;
+        const TOTAL_SUPPLY_BASE = 800000;
+        const MONTHLY_BURN = 100;
 
         // --- Configuración de AI (Gemini) ---
         const GEMINI_API_KEY = "AIzaSyCwPJYCrdIbhUvObM0SP6R58TYjTGT3HVg";
@@ -172,17 +307,27 @@
         const CHAT_COLLECTION = "aerocoin_chat";
         const BURN_EVENTS_COLLECTION = "aerocoin_burn_events";
         const APP_STATS_COLLECTION = "aerocoin_stats";
+        const USERS_COLLECTION = "aerocoin_users";
         
         let db, auth;
-        let userId = null;
+        let currentUser = null;
         let isAuthReady = false;
         
-        // Variables globales actualizadas
+        // Variables globales
         window.remainingTokens = TOTAL_SUPPLY_BASE.toLocaleString();
         window.burnedTokens = '0';
         window.progressPercent = '0.0000';
         window.nextAirdropAmount = 1;
         window.totalBurned = 0;
+        window.userProfile = null;
+
+        // Proveedores de autenticación
+        const googleProvider = new GoogleAuthProvider();
+        const appleProvider = new OAuthProvider('apple.com');
+        
+        // Configurar Apple para web
+        appleProvider.addScope('email');
+        appleProvider.addScope('name');
 
         async function initializeFirebase() {
             try {
@@ -190,18 +335,29 @@
                 db = getFirestore(app);
                 auth = getAuth(app);
                 
-                await signInAnonymously(auth);
+                // Verificar si hay resultado de redirección (para Apple)
+                getRedirectResult(auth).then((result) => {
+                    if (result) {
+                        // Usuario autenticado por redirección
+                        console.log("User authenticated via redirect:", result.user);
+                    }
+                }).catch((error) => {
+                    console.error("Redirect auth error:", error);
+                });
 
-                onAuthStateChanged(auth, (user) => {
+                onAuthStateChanged(auth, async (user) => {
                     if (user) {
-                        userId = user.uid;
+                        currentUser = user;
                         isAuthReady = true;
-                        console.log("Firebase Auth Ready. User ID:", userId);
+                        console.log("User authenticated:", user.uid, user.email);
                         
-                        window.db = db;
-                        window.userId = userId;
-                        window.isAuthReady = isAuthReady;
+                        // Cargar o crear perfil de usuario
+                        await loadOrCreateUserProfile(user);
                         
+                        // Actualizar UI
+                        updateAuthUI();
+                        
+                        // Cargar datos de la app
                         loadInitialData();
                         loadAirdrops();
                         loadBurnVotes();
@@ -209,12 +365,25 @@
                         loadChatMessages();
                         checkAndExecuteBurns();
                         loadAppStats();
+                        
+                        // Ocultar modal si está abierto
+                        hideAuthModal();
 
                     } else {
+                        currentUser = null;
                         isAuthReady = true;
-                        console.log("Firebase signed out or anonymous.");
-                        window.isAuthReady = isAuthReady;
+                        window.userProfile = null;
+                        console.log("User signed out");
+                        
+                        // Mostrar modal de autenticación si no hay usuario
+                        showAuthModal();
+                        
+                        // Actualizar UI
+                        updateAuthUI();
                     }
+                    
+                    window.db = db;
+                    window.isAuthReady = isAuthReady;
                 });
 
             } catch (error) {
@@ -222,6 +391,229 @@
             }
         }
         
+        // --- Gestión de perfiles de usuario ---
+        async function loadOrCreateUserProfile(user) {
+            if (!db || !user) return;
+            
+            try {
+                const userRef = doc(db, USERS_COLLECTION, user.uid);
+                const userDoc = await getDoc(userRef);
+                
+                if (userDoc.exists()) {
+                    window.userProfile = userDoc.data();
+                    console.log("User profile loaded:", window.userProfile);
+                } else {
+                    // Crear nuevo perfil de usuario
+                    const newUserProfile = {
+                        uid: user.uid,
+                        email: user.email,
+                        displayName: user.displayName || `User_${user.uid.substring(0, 6)}`,
+                        photoURL: user.photoURL || null,
+                        provider: user.providerData[0]?.providerId || 'unknown',
+                        createdAt: Timestamp.now(),
+                        lastLogin: Timestamp.now(),
+                        totalAirdropsClaimed: 0,
+                        totalVotesCast: 0,
+                        address: null // Dirección BSC vinculada
+                    };
+                    
+                    await setDoc(userRef, newUserProfile);
+                    window.userProfile = newUserProfile;
+                    console.log("New user profile created:", newUserProfile);
+                }
+                
+                // Actualizar última conexión
+                await updateDoc(userRef, {
+                    lastLogin: Timestamp.now()
+                });
+                
+            } catch (error) {
+                console.error("Error loading/creating user profile:", error);
+            }
+        }
+        
+        // --- Autenticación con Google ---
+        window.signInWithGoogle = async () => {
+            try {
+                const result = await signInWithPopup(auth, googleProvider);
+                console.log("Google sign in successful:", result.user);
+                
+                // Notificar en chat
+                await notifySystemMessage(`${result.user.displayName || 'Usuario'} se ha conectado con Google`);
+                
+            } catch (error) {
+                console.error("Error signing in with Google:", error);
+                showMessage('authError', translations[window.currentLanguage].auth_google_error, 'error');
+            }
+        };
+        
+        // --- Autenticación con Apple ---
+        window.signInWithApple = async () => {
+            try {
+                // Apple requiere redirección en algunos entornos
+                await signInWithRedirect(auth, appleProvider);
+                
+            } catch (error) {
+                console.error("Error signing in with Apple:", error);
+                
+                // Intentar con popup como fallback
+                try {
+                    const result = await signInWithPopup(auth, appleProvider);
+                    console.log("Apple sign in successful:", result.user);
+                    
+                    // Notificar en chat
+                    await notifySystemMessage(`${result.user.displayName || 'Usuario'} se ha conectado con Apple`);
+                    
+                } catch (popupError) {
+                    console.error("Apple popup error:", popupError);
+                    showMessage('authError', translations[window.currentLanguage].auth_apple_error, 'error');
+                }
+            }
+        };
+        
+        // --- Cerrar sesión ---
+        window.signOutUser = async () => {
+            try {
+                if (currentUser) {
+                    // Notificar en chat antes de cerrar sesión
+                    await notifySystemMessage(`${currentUser.displayName || 'Usuario'} ha cerrado sesión`);
+                }
+                
+                await signOut(auth);
+                showMessage('authSuccess', translations[window.currentLanguage].auth_logout_success, 'success');
+                
+            } catch (error) {
+                console.error("Error signing out:", error);
+                showMessage('authError', translations[window.currentLanguage].auth_logout_error, 'error');
+            }
+        };
+        
+        // --- Notificar mensajes del sistema ---
+        async function notifySystemMessage(message) {
+            if (!db) return;
+            
+            try {
+                const chatRef = collection(db, CHAT_COLLECTION);
+                await addDoc(chatRef, {
+                    message: message,
+                    senderId: 'System',
+                    timestamp: Timestamp.now(),
+                    isSystem: true,
+                });
+            } catch (error) {
+                console.error("Error sending system message:", error);
+            }
+        }
+        
+        // --- UI de autenticación ---
+        function updateAuthUI() {
+            const authButton = document.getElementById('authButton');
+            const userInfo = document.getElementById('userInfo');
+            const airdropButton = document.getElementById('airdropButton');
+            const voteButton = document.getElementById('voteButton');
+            
+            if (currentUser && window.userProfile) {
+                // Usuario autenticado
+                if (authButton) authButton.classList.add('hidden');
+                if (userInfo) {
+                    userInfo.classList.remove('hidden');
+                    
+                    const userName = document.getElementById('userName');
+                    const userAvatar = document.getElementById('userAvatar');
+                    
+                    if (userName) {
+                        userName.textContent = window.userProfile.displayName || 
+                                              currentUser.email || 
+                                              currentUser.uid.substring(0, 8);
+                    }
+                    
+                    if (userAvatar) {
+                        if (window.userProfile.photoURL) {
+                            userAvatar.src = window.userProfile.photoURL;
+                            userAvatar.classList.remove('hidden');
+                        } else {
+                            userAvatar.classList.add('hidden');
+                        }
+                    }
+                }
+                
+                // Habilitar botones que requieren autenticación
+                if (airdropButton) {
+                    airdropButton.disabled = false;
+                    airdropButton.classList.remove('auth-required');
+                }
+                if (voteButton) {
+                    voteButton.disabled = false;
+                    voteButton.classList.remove('auth-required');
+                }
+                
+            } else {
+                // Usuario no autenticado
+                if (authButton) authButton.classList.remove('hidden');
+                if (userInfo) userInfo.classList.add('hidden');
+                
+                // Deshabilitar botones que requieren autenticación
+                if (airdropButton) {
+                    airdropButton.disabled = true;
+                    airdropButton.classList.add('auth-required');
+                }
+                if (voteButton) {
+                    voteButton.disabled = true;
+                    voteButton.classList.add('auth-required');
+                }
+            }
+        }
+        
+        // --- Modal de autenticación ---
+        function showAuthModal() {
+            // Solo mostrar si no hay usuario
+            if (currentUser) return;
+            
+            const modal = document.getElementById('authModal');
+            if (modal) {
+                modal.classList.remove('hidden');
+            }
+        }
+        
+        function hideAuthModal() {
+            const modal = document.getElementById('authModal');
+            if (modal) {
+                modal.classList.add('hidden');
+            }
+        }
+        
+        window.closeAuthModal = () => {
+            hideAuthModal();
+        };
+        
+        // --- Mostrar mensajes ---
+        function showMessage(elementId, message, type = 'info') {
+            const element = document.getElementById(elementId);
+            if (!element) return;
+            
+            element.textContent = message;
+            element.classList.remove('hidden', 'text-green-500', 'text-red-500', 'text-yellow-500');
+            
+            switch(type) {
+                case 'success':
+                    element.classList.add('text-green-500');
+                    break;
+                case 'error':
+                    element.classList.add('text-red-500');
+                    break;
+                case 'warning':
+                    element.classList.add('text-yellow-500');
+                    break;
+                default:
+                    element.classList.add('text-blue-500');
+            }
+            
+            // Auto-ocultar después de 5 segundos
+            setTimeout(() => {
+                element.classList.add('hidden');
+            }, 5000);
+        }
+
         // --- Cargar datos iniciales de la app ---
         async function loadAppStats() {
             if (!window.db || !window.isAuthReady) return;
@@ -456,7 +848,7 @@
             });
         }
 
-        // --- Airdrops Logic ---
+        // --- Airdrops Logic con autenticación ---
         function loadAirdrops() {
             if (!window.db || !window.isAuthReady) return;
 
@@ -572,7 +964,7 @@
             return (window.currentLanguage === 'es' ? 'Ahora' : 'Just now');
         }
 
-        // --- Burn Vote Logic ---
+        // --- Burn Vote Logic con autenticación ---
         function getNextMonthFirstDay() {
             const date = new Date();
             const nextMonth = new Date(date.getFullYear(), date.getMonth() + 1, 1);
@@ -780,7 +1172,7 @@
                 // 1. Save user message
                 await addDoc(chatRef, {
                     message: message,
-                    senderId: window.userId,
+                    senderId: currentUser ? currentUser.uid : 'anonymous',
                     timestamp: Timestamp.now(),
                     isSystem: false,
                 });
@@ -902,8 +1294,15 @@
         // --- Init ---
         initializeFirebase();
 
-        // --- Airdrop Claim Logic ---
+        // --- Airdrop Claim Logic con autenticación ---
         window.claimAirdrop = async () => {
+            // Verificar autenticación
+            if (!currentUser) {
+                showAuthModal();
+                showMessage('authError', translations[window.currentLanguage].auth_required_airdrop, 'error');
+                return;
+            }
+
             const inputElement = document.getElementById('bscAddressInput');
             const address = inputElement.value.trim();
             const messageElement = document.getElementById('airdropMessage');
@@ -924,8 +1323,8 @@
             const originalButtonText = airdropButton.textContent;
             airdropButton.textContent = window.currentLanguage === 'es' ? 'Procesando...' : 'Processing...';
 
-            if (!window.db || !window.isAuthReady) {
-                console.error("Firebase not ready.");
+            if (!window.db || !window.isAuthReady || !currentUser) {
+                console.error("Firebase not ready or user not authenticated.");
                 messageElement.textContent = translations[window.currentLanguage].airdrop_error.replace('{amount}', window.nextAirdropAmount || 1);
                 messageElement.classList.remove('hidden');
                 messageElement.classList.add('text-red-500');
@@ -937,48 +1336,72 @@
             try {
                 const airdropsRef = collection(window.db, AIRDROPS_COLLECTION);
 
-                // Verificar si la dirección ya reclamó
-                const q = query(airdropsRef, where("address", "==", address));
-                const querySnapshot = await getDocs(q);
+                // Verificar si el usuario ya reclamó (por userId)
+                const userAirdropsQuery = query(airdropsRef, where("userId", "==", currentUser.uid));
+                const userAirdropsSnapshot = await getDocs(userAirdropsQuery);
 
-                if (!querySnapshot.empty) {
-                    messageElement.textContent = translations[window.currentLanguage].airdrop_duplicate;
+                if (!userAirdropsSnapshot.empty) {
+                    messageElement.textContent = translations[window.currentLanguage].airdrop_user_limit;
                     messageElement.classList.remove('hidden', 'text-green-500');
                     messageElement.classList.add('text-yellow-500');
                 } else {
-                    const airdropAmount = window.nextAirdropAmount || 1;
+                    // Verificar si la dirección ya fue usada
+                    const addressQuery = query(airdropsRef, where("address", "==", address));
+                    const addressSnapshot = await getDocs(addressQuery);
 
-                    // Registrar airdrop
-                    await addDoc(airdropsRef, {
-                        address: address,
-                        claimedAt: Timestamp.now(),
-                        amount: airdropAmount,
-                        type: 'airdrop'
-                    });
-                    
-                    messageElement.textContent = translations[window.currentLanguage].airdrop_success.replace('{amount}', airdropAmount);
-                    messageElement.classList.remove('hidden', 'text-red-500', 'text-yellow-500');
-                    messageElement.classList.add('text-green-500');
-                    
-                    inputElement.value = '';
-                    
-                    // Actualizar cantidad para próximo airdrop
-                    window.nextAirdropAmount = airdropAmount + 1;
-                    
-                    // Actualizar estadísticas
-                    await updateAppStats();
-                    
-                    // Actualizar UI inmediatamente
-                    updateAirdropsUI([]);
-                    
-                    // Notificar en chat
-                    const chatRef = collection(window.db, CHAT_COLLECTION);
-                    await addDoc(chatRef, {
-                        message: `🎁 ¡NUEVO AIRDROP! ${address.substring(0, 6)}... recibió ${airdropAmount} AERO`,
-                        senderId: 'System',
-                        timestamp: Timestamp.now(),
-                        isSystem: true,
-                    });
+                    if (!addressSnapshot.empty) {
+                        messageElement.textContent = translations[window.currentLanguage].airdrop_duplicate;
+                        messageElement.classList.remove('hidden', 'text-green-500');
+                        messageElement.classList.add('text-yellow-500');
+                    } else {
+                        const airdropAmount = window.nextAirdropAmount || 1;
+
+                        // Registrar airdrop con userId
+                        await addDoc(airdropsRef, {
+                            address: address,
+                            userId: currentUser.uid,
+                            userEmail: currentUser.email,
+                            userName: window.userProfile?.displayName || currentUser.displayName,
+                            claimedAt: Timestamp.now(),
+                            amount: airdropAmount,
+                            type: 'airdrop'
+                        });
+                        
+                        // Actualizar perfil de usuario
+                        if (window.userProfile) {
+                            const userRef = doc(window.db, USERS_COLLECTION, currentUser.uid);
+                            await updateDoc(userRef, {
+                                totalAirdropsClaimed: (window.userProfile.totalAirdropsClaimed || 0) + 1,
+                                address: address,
+                                lastAirdropClaim: Timestamp.now()
+                            });
+                            window.userProfile.totalAirdropsClaimed = (window.userProfile.totalAirdropsClaimed || 0) + 1;
+                        }
+                        
+                        messageElement.textContent = translations[window.currentLanguage].airdrop_success.replace('{amount}', airdropAmount);
+                        messageElement.classList.remove('hidden', 'text-red-500', 'text-yellow-500');
+                        messageElement.classList.add('text-green-500');
+                        
+                        inputElement.value = '';
+                        
+                        // Actualizar cantidad para próximo airdrop
+                        window.nextAirdropAmount = airdropAmount + 1;
+                        
+                        // Actualizar estadísticas
+                        await updateAppStats();
+                        
+                        // Actualizar UI inmediatamente
+                        updateAirdropsUI([]);
+                        
+                        // Notificar en chat
+                        const chatRef = collection(window.db, CHAT_COLLECTION);
+                        await addDoc(chatRef, {
+                            message: `🎁 ¡NUEVO AIRDROP! ${window.userProfile?.displayName || currentUser.email} recibió ${airdropAmount} AERO`,
+                            senderId: 'System',
+                            timestamp: Timestamp.now(),
+                            isSystem: true,
+                        });
+                    }
                 }
 
             } catch (e) {
@@ -995,8 +1418,15 @@
             }
         };
 
-        // --- BURN VOTING LOGIC ---
+        // --- BURN VOTING LOGIC con autenticación ---
         window.voteForBurnDate = async () => {
+            // Verificar autenticación
+            if (!currentUser) {
+                showAuthModal();
+                showMessage('authError', translations[window.currentLanguage].auth_required_vote, 'error');
+                return;
+            }
+
             const inputElement = document.getElementById('burnDateInput');
             const dateValue = inputElement.value.trim();
             const messageElement = document.getElementById('voteMessage');
@@ -1027,7 +1457,7 @@
             voteButton.disabled = true;
             voteButton.textContent = window.currentLanguage === 'es' ? 'Votando...' : 'Voting...';
 
-            if (!window.db || !window.isAuthReady || !window.userId) {
+            if (!window.db || !window.isAuthReady || !currentUser) {
                 console.error("Firebase not ready or User not authenticated.");
                 messageElement.textContent = translations[window.currentLanguage].vote_auth_required;
                 messageElement.classList.remove('hidden', 'text-green-500');
@@ -1039,13 +1469,25 @@
 
             try {
                 // Usar userId como Document ID para garantizar 1 voto por usuario
-                const voteDocRef = doc(window.db, VOTES_COLLECTION, window.userId);
+                const voteDocRef = doc(window.db, VOTES_COLLECTION, currentUser.uid);
                 
                 await setDoc(voteDocRef, {
                     date: dateValue,
-                    voterId: window.userId,
+                    userId: currentUser.uid,
+                    userEmail: currentUser.email,
+                    userName: window.userProfile?.displayName || currentUser.displayName,
                     votedAt: Timestamp.now(),
                 });
+                
+                // Actualizar perfil de usuario
+                if (window.userProfile) {
+                    const userRef = doc(window.db, USERS_COLLECTION, currentUser.uid);
+                    await updateDoc(userRef, {
+                        totalVotesCast: (window.userProfile.totalVotesCast || 0) + 1,
+                        lastVote: Timestamp.now()
+                    });
+                    window.userProfile.totalVotesCast = (window.userProfile.totalVotesCast || 0) + 1;
+                }
                 
                 messageElement.textContent = translations[window.currentLanguage].vote_success;
                 messageElement.classList.remove('hidden', 'text-red-500');
@@ -1079,7 +1521,7 @@
         }
         window.applyInitialTheme();
 
-        // --- LANGUAGE DATA ---
+        // --- LANGUAGE DATA actualizada con textos de autenticación ---
         const translations = {
             'en': {
                 'title': 'Aerocoin (AERO) - The Deflationary Scarcity on BSC',
@@ -1146,6 +1588,8 @@
                 'airdrop_invalid': 'Invalid BSC address format.',
                 'airdrop_error': 'Error processing airdrop. Check console.',
                 'airdrop_duplicate': 'Address already claimed airdrop.',
+                'airdrop_user_limit': 'You have already claimed your airdrop. Only one airdrop per user.',
+                'auth_required_airdrop': 'Please sign in to claim airdrop.',
                 'vote_input_title': 'Vote for the Monthly Burn Date',
                 'vote_input_desc': 'Select a date within the **next month** (YYYY-MM-DD). Only one vote per unique user is allowed.',
                 'btn_vote': 'Submit Vote',
@@ -1159,6 +1603,7 @@
                 'vote_invalid_month': 'The date must be within the next month.',
                 'vote_error': 'Error submitting vote. Check console.',
                 'vote_auth_required': 'Authentication required to vote.',
+                'auth_required_vote': 'Please sign in to vote.',
                 'history_title': 'Burn History (Executed Burns)',
                 'history_month_label': 'Burn Event for {month}',
                 'history_winning_date': 'Winning Date:',
@@ -1184,6 +1629,23 @@
                 'btn_analyze': 'Analyze Sentiment ✨',
                 'loading_sentiment': 'Analyzing real-time web data...',
                 'sentiment_sources': 'Sources Cited:',
+                
+                // Nuevos textos de autenticación
+                'auth_modal_title': 'Welcome to Aerocoin',
+                'auth_modal_desc': 'Sign in to claim airdrops, vote on burn dates, and participate in the community.',
+                'auth_btn_google': 'Continue with Google',
+                'auth_btn_apple': 'Continue with Apple',
+                'auth_btn_skip': 'Skip for now',
+                'auth_google_error': 'Error signing in with Google.',
+                'auth_apple_error': 'Error signing in with Apple.',
+                'auth_logout': 'Sign Out',
+                'auth_logout_success': 'Successfully signed out.',
+                'auth_logout_error': 'Error signing out.',
+                'auth_welcome': 'Welcome back, {name}!',
+                'auth_sign_in': 'Sign In',
+                'auth_user_profile': 'Profile',
+                'auth_user_airdrops': 'Airdrops claimed: {count}',
+                'auth_user_votes': 'Votes cast: {count}',
             },
             'es': {
                 'title': 'Aerocoin (AERO) - La Escasez Deflacionaria en BSC',
@@ -1250,6 +1712,8 @@
                 'airdrop_invalid': 'Formato de dirección de BSC inválido.',
                 'airdrop_error': 'Error al procesar el airdrop. Revisa la consola.',
                 'airdrop_duplicate': 'Esta dirección ya reclamó un airdrop.',
+                'airdrop_user_limit': 'Ya has reclamado tu airdrop. Solo un airdrop por usuario.',
+                'auth_required_airdrop': 'Por favor, inicia sesión para reclamar airdrop.',
                 'vote_input_title': 'Vota por la Fecha de Quema Mensual',
                 'vote_input_desc': 'Selecciona una fecha dentro del **próximo mes** (AAAA-MM-DD). Solo se permite un voto por usuario único.',
                 'btn_vote': 'Enviar Voto',
@@ -1263,6 +1727,7 @@
                 'vote_invalid_month': 'La fecha debe estar dentro del próximo mes.',
                 'vote_error': 'Error al enviar el voto. Revisa la consola.',
                 'vote_auth_required': 'Se requiere autenticación para votar.',
+                'auth_required_vote': 'Por favor, inicia sesión para votar.',
                 'history_title': 'Historial de Quema (Quemas Ejecutadas)',
                 'history_month_label': 'Evento de Quema de {month}',
                 'history_winning_date': 'Fecha Ganadora:',
@@ -1288,6 +1753,23 @@
                 'btn_analyze': 'Analizar Sentimiento ✨',
                 'loading_sentiment': 'Analizando datos web en tiempo real...',
                 'sentiment_sources': 'Fuentes Citadas:',
+                
+                // Nuevos textos de autenticación en español
+                'auth_modal_title': 'Bienvenido a Aerocoin',
+                'auth_modal_desc': 'Inicia sesión para reclamar airdrops, votar fechas de quema y participar en la comunidad.',
+                'auth_btn_google': 'Continuar con Google',
+                'auth_btn_apple': 'Continuar con Apple',
+                'auth_btn_skip': 'Saltar por ahora',
+                'auth_google_error': 'Error al iniciar sesión con Google.',
+                'auth_apple_error': 'Error al iniciar sesión con Apple.',
+                'auth_logout': 'Cerrar Sesión',
+                'auth_logout_success': 'Sesión cerrada correctamente.',
+                'auth_logout_error': 'Error al cerrar sesión.',
+                'auth_welcome': '¡Bienvenido de nuevo, {name}!',
+                'auth_sign_in': 'Iniciar Sesión',
+                'auth_user_profile': 'Perfil',
+                'auth_user_airdrops': 'Airdrops reclamados: {count}',
+                'auth_user_votes': 'Votos emitidos: {count}',
             }
         };
 
@@ -1320,6 +1802,19 @@
                         localizedContent = localizedContent.replace('{burned}', window.burnedTokens);
                         element.innerHTML = localizedContent;
                         return;
+                    }
+                    
+                    // Reemplazar variables en textos de usuario
+                    if (key === 'auth_welcome' && window.userProfile) {
+                        localizedContent = localizedContent.replace('{name}', window.userProfile.displayName || 'Usuario');
+                    }
+                    
+                    if (key === 'auth_user_airdrops' && window.userProfile) {
+                        localizedContent = localizedContent.replace('{count}', window.userProfile.totalAirdropsClaimed || 0);
+                    }
+                    
+                    if (key === 'auth_user_votes' && window.userProfile) {
+                        localizedContent = localizedContent.replace('{count}', window.userProfile.totalVotesCast || 0);
                     }
                     
                     element.innerHTML = localizedContent;
@@ -1426,6 +1921,7 @@
         window.setLanguage = function(lang) {
             originalSetLanguage(lang);
             updateThemeIcon();
+            updateAuthUI();
         };
         
         const originalToggleTheme = window.toggleTheme;
@@ -1438,10 +1934,55 @@
 </head>
 <body class="bg-gray-900 text-aero-light font-sans">
 
+    <!-- Modal de Autenticación -->
+    <div id="authModal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <div class="flex justify-between items-center mb-6">
+                <h3 class="text-2xl font-bold text-aero-blue" data-localize="auth_modal_title">Welcome to Aerocoin</h3>
+                <button onclick="closeAuthModal()" class="text-gray-500 hover:text-white text-2xl">&times;</button>
+            </div>
+            
+            <p class="text-gray-500 mb-8" data-localize="auth_modal_desc">
+                Sign in to claim airdrops, vote on burn dates, and participate in the community.
+            </p>
+            
+            <div class="space-y-4">
+                <button onclick="signInWithGoogle()" class="auth-btn auth-btn-google">
+                    <svg class="w-5 h-5" viewBox="0 0 24 24">
+                        <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                        <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                        <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                        <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                    </svg>
+                    <span data-localize="auth_btn_google">Continue with Google</span>
+                </button>
+                
+                <button onclick="signInWithApple()" class="auth-btn auth-btn-apple">
+                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M14.94 5.19A4.38 4.38 0 0 0 16 2a4.44 4.44 0 0 0-3 1.52 4.17 4.17 0 0 0-1 3.09 3.69 3.69 0 0 0 2.94-1.42zm2.52 7.44a4.51 4.51 0 0 1 2.16-3.81 4.66 4.66 0 0 0-3.66-2c-1.56-.16-3 .91-3.83.91s-2-.89-3.3-.87a4.92 4.92 0 0 0-4.14 2.53C2.93 12.45 4.24 17 6 19.47c.8 1.21 1.8 2.58 3.12 2.53s1.75-.76 3.28-.76 2 .76 3.3.73 2.22-1.24 3.06-2.45a11 11 0 0 0 1.38-2.85 4.41 4.41 0 0 1-2.68-4.04z"/>
+                    </svg>
+                    <span data-localize="auth_btn_apple">Continue with Apple</span>
+                </button>
+                
+                <button onclick="closeAuthModal()" class="auth-btn btn-secondary">
+                    <span data-localize="auth_btn_skip">Skip for now</span>
+                </button>
+            </div>
+            
+            <p id="authError" class="mt-4 text-center text-red-500 hidden"></p>
+            <p id="authSuccess" class="mt-4 text-center text-green-500 hidden"></p>
+            
+            <p class="text-xs text-gray-500 mt-8 text-center">
+                By signing in, you agree to our Terms of Service and Privacy Policy.
+            </p>
+        </div>
+    </div>
+
     <!-- Navbar -->
     <header class="p-4 border-b border-aero-blue/20 shadow-lg" style="background-color: var(--nav-bg);">
         <div class="max-w-7xl mx-auto flex justify-between items-center">
             <h1 class="text-2xl font-bold text-aero-blue">AERO<span class="text-aero-light">COIN</span></h1>
+            
             <nav class="flex items-center space-x-4">
                 <a href="#vision" class="hidden sm:inline text-sm md:text-base text-gray-300 hover:text-aero-blue transition-colors mr-4" data-localize="nav_vision">Vision</a>
                 <a href="#tokenomics" class="hidden sm:inline text-sm md:text-base text-gray-300 hover:text-aero-blue transition-colors" data-localize="nav_tokenomics">Tokenomics</a>
@@ -1450,6 +1991,31 @@
                 <a href="#voting" class="hidden sm:inline text-sm md:text-base text-gray-300 hover:text-aero-blue transition-colors ml-4" data-localize="voting_title">Burn Vote</a>
                 <a href="#forum" class="hidden sm:inline text-sm md:text-base text-gray-300 hover:text-aero-blue transition-colors ml-4" data-localize="forum_title">Public Forum</a>
                 <a href="#faq" class="hidden sm:inline text-sm md:text-base text-gray-300 hover:text-aero-blue transition-colors ml-4" data-localize="faq_title">FAQ</a>
+
+                <!-- Info del usuario autenticado -->
+                <div id="userInfo" class="hidden">
+                    <div class="flex items-center space-x-3">
+                        <div class="user-info">
+                            <img id="userAvatar" src="" alt="Avatar" class="user-avatar hidden">
+                            <div class="flex flex-col">
+                                <span id="userName" class="text-sm font-medium text-aero-light"></span>
+                                <div class="flex space-x-2 text-xs text-gray-500">
+                                    <span id="userAirdropsCount" data-localize="auth_user_airdrops"></span>
+                                    <span>•</span>
+                                    <span id="userVotesCount" data-localize="auth_user_votes"></span>
+                                </div>
+                            </div>
+                        </div>
+                        <button onclick="signOutUser()" class="text-xs bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded-lg transition">
+                            <span data-localize="auth_logout">Sign Out</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Botón de autenticación -->
+                <button id="authButton" onclick="showAuthModal()" class="bg-aero-blue hover:bg-aero-blue/80 text-gray-900 font-bold py-2 px-4 rounded-lg transition duration-150">
+                    <span data-localize="auth_sign_in">Sign In</span>
+                </button>
 
                 <!-- Language Toggles -->
                 <button onclick="setLanguage('en')" class="text-2xl p-1 rounded-full hover:bg-gray-700 transition">
@@ -1472,6 +2038,7 @@
         </div>
     </header>
 
+    <!-- Resto del código HTML permanece igual -->
     <main>
         <!-- Hero Section -->
         <section class="py-20 md:py-32 text-center shadow-inner shadow-aero-blue/10 section-bg-light">
