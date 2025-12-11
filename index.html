@@ -280,17 +280,16 @@
         } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         const APP_ID = "aerocoin"; // ID único para Aerocoin
-    const BASE_PATH = `artifacts/${APP_ID}`;
-            // Colecciones para Aerocoin
-    const AIRDROPS_COLLECTION = `${BASE_PATH}/public/data/aerocoin_airdrops`;
-    const VOTES_COLLECTION = `${BASE_PATH}/public/data/aerocoin_burn_votes`;
-    const CHAT_COLLECTION = `${BASE_PATH}/public/data/aerocoin_chat`;
-    const BURN_EVENTS_COLLECTION = `${BASE_PATH}/public/data/aerocoin_burn_events`;
-    const APP_STATS_COLLECTION = `${BASE_PATH}/public/data/aerocoin_stats`;
+        const BASE_PATH = `artifacts/${APP_ID}`;
+        // Colecciones para Aerocoin
+        const AIRDROPS_COLLECTION = `${BASE_PATH}/public/data/aerocoin_airdrops`;
+        const VOTES_COLLECTION = `${BASE_PATH}/public/data/aerocoin_burn_votes`;
+        const CHAT_COLLECTION = `${BASE_PATH}/public/data/aerocoin_chat`;
+        const BURN_EVENTS_COLLECTION = `${BASE_PATH}/public/data/aerocoin_burn_events`;
+        const APP_STATS_COLLECTION = `${BASE_PATH}/public/data/aerocoin_stats`;
 
-    // Perfiles de usuario (reutilizables entre apps)
-    const USERS_COLLECTION = "users"; // Fuera de artifacts para reutilización
-    // --- FIN DE LAS CONSTANTES ---
+        // Perfiles de usuario (reutilizables entre apps)
+        const USERS_COLLECTION = "users"; // Fuera de artifacts para reutilización
         
         // --- Configuración de Firebase ---
         const firebaseConfig = {
@@ -310,11 +309,9 @@
         const MONTHLY_BURN = 100;
 
         // --- Configuración de AI (Gemini) ---
-        const GEMINI_API_KEY = "AIzaSyCwPJYCrdIbhUvObM0SP6R58TYjTGT3HVg";
+        const GEMINI_API_KEY = "AIzaSyALOQSrgOQwtjuy7b84UymWaI3a58EF0MU"; // TU NUEVA API KEY
         const GEMINI_MODEL = "gemini-2.5-flash-preview-09-2025";
         const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
-        
-        // --- Configuración de colecciones ---
         
         let db, auth;
         let currentUser = null;
@@ -338,14 +335,16 @@
 
         async function initializeFirebase() {
             try {
+                console.log("Initializing Firebase...");
                 const app = initializeApp(firebaseConfig);
                 db = getFirestore(app);
                 auth = getAuth(app);
                 
+                window.db = db; // Asegurar que esté disponible globalmente
+                
                 // Verificar si hay resultado de redirección (para Apple)
                 getRedirectResult(auth).then((result) => {
                     if (result) {
-                        // Usuario autenticado por redirección
                         console.log("User authenticated via redirect:", result.user);
                     }
                 }).catch((error) => {
@@ -353,6 +352,7 @@
                 });
 
                 onAuthStateChanged(auth, async (user) => {
+                    console.log("Auth state changed. User:", user);
                     if (user) {
                         currentUser = user;
                         isAuthReady = true;
@@ -389,7 +389,6 @@
                         updateAuthUI();
                     }
                     
-                    window.db = db;
                     window.isAuthReady = isAuthReady;
                 });
 
@@ -400,9 +399,13 @@
         
         // --- Gestión de perfiles de usuario ---
         async function loadOrCreateUserProfile(user) {
-            if (!db || !user) return;
+            if (!db || !user) {
+                console.log("DB or user not available");
+                return;
+            }
             
             try {
+                console.log("Loading user profile for:", user.uid);
                 const userRef = doc(db, USERS_COLLECTION, user.uid);
                 const userDoc = await getDoc(userRef);
                 
@@ -424,6 +427,7 @@
                         address: null // Dirección BSC vinculada
                     };
                     
+                    console.log("Creating new user profile:", newUserProfile);
                     await setDoc(userRef, newUserProfile);
                     window.userProfile = newUserProfile;
                     console.log("New user profile created:", newUserProfile);
@@ -436,12 +440,21 @@
                 
             } catch (error) {
                 console.error("Error loading/creating user profile:", error);
+                // Continuar incluso si hay error con el perfil
+                window.userProfile = {
+                    uid: user.uid,
+                    email: user.email,
+                    displayName: user.displayName || `User_${user.uid.substring(0, 6)}`,
+                    totalAirdropsClaimed: 0,
+                    totalVotesCast: 0
+                };
             }
         }
         
         // --- Autenticación con Google ---
         window.signInWithGoogle = async () => {
             try {
+                console.log("Attempting Google sign in...");
                 const result = await signInWithPopup(auth, googleProvider);
                 console.log("Google sign in successful:", result.user);
                 
@@ -457,6 +470,7 @@
         // --- Autenticación con Apple ---
         window.signInWithApple = async () => {
             try {
+                console.log("Attempting Apple sign in...");
                 // Apple requiere redirección en algunos entornos
                 await signInWithRedirect(auth, appleProvider);
                 
@@ -514,6 +528,7 @@
         
         // --- UI de autenticación ---
         function updateAuthUI() {
+            console.log("Updating auth UI, currentUser:", currentUser);
             const authButton = document.getElementById('authButton');
             const userInfo = document.getElementById('userInfo');
             const airdropButton = document.getElementById('airdropButton');
@@ -521,6 +536,7 @@
             
             if (currentUser && window.userProfile) {
                 // Usuario autenticado
+                console.log("User is authenticated, updating UI");
                 if (authButton) authButton.classList.add('hidden');
                 if (userInfo) {
                     userInfo.classList.remove('hidden');
@@ -542,6 +558,20 @@
                             userAvatar.classList.add('hidden');
                         }
                     }
+                    
+                    // Actualizar contadores de usuario
+                    const userAirdropsCount = document.getElementById('userAirdropsCount');
+                    const userVotesCount = document.getElementById('userVotesCount');
+                    
+                    if (userAirdropsCount) {
+                        userAirdropsCount.textContent = translations[window.currentLanguage].auth_user_airdrops
+                            .replace('{count}', window.userProfile.totalAirdropsClaimed || 0);
+                    }
+                    
+                    if (userVotesCount) {
+                        userVotesCount.textContent = translations[window.currentLanguage].auth_user_votes
+                            .replace('{count}', window.userProfile.totalVotesCast || 0);
+                    }
                 }
                 
                 // Habilitar botones que requieren autenticación
@@ -556,6 +586,7 @@
                 
             } else {
                 // Usuario no autenticado
+                console.log("User is not authenticated, updating UI");
                 if (authButton) authButton.classList.remove('hidden');
                 if (userInfo) userInfo.classList.add('hidden');
                 
@@ -623,9 +654,13 @@
 
         // --- Cargar datos iniciales de la app ---
         async function loadAppStats() {
-            if (!window.db || !window.isAuthReady) return;
+            if (!window.db || !window.isAuthReady) {
+                console.log("loadAppStats: DB or auth not ready");
+                return;
+            }
 
             try {
+                console.log("Loading app stats...");
                 const statsRef = doc(window.db, APP_STATS_COLLECTION, "current_stats");
                 const statsDoc = await getDoc(statsRef);
                 
@@ -633,9 +668,11 @@
                     const stats = statsDoc.data();
                     window.totalBurned = stats.totalBurned || 0;
                     window.nextAirdropAmount = stats.nextAirdropAmount || 1;
+                    console.log("App stats loaded:", stats);
                     updateSupplyCounters();
                 } else {
                     // Inicializar estadísticas si no existen
+                    console.log("Initializing app stats...");
                     await setDoc(statsRef, {
                         totalBurned: 0,
                         nextAirdropAmount: 1,
@@ -660,6 +697,8 @@
                     lastUpdated: Timestamp.now()
                 }, { merge: true });
                 
+                console.log("App stats updated");
+                
             } catch (error) {
                 console.error("Error updating app stats:", error);
             }
@@ -667,14 +706,18 @@
 
         // --- Cargar datos iniciales ---
         async function loadInitialData() {
+            console.log("Loading initial data...");
             updateSupplyCounters();
         }
 
         // --- Actualizar contadores de suministro ---
         function updateSupplyCounters() {
+            console.log("Updating supply counters...");
             window.burnedTokens = window.totalBurned.toLocaleString();
-            window.remainingTokens = (window.TOTAL_SUPPLY_BASE - window.totalBurned).toLocaleString();
-            window.progressPercent = ((window.totalBurned / window.TOTAL_SUPPLY_BASE) * 100).toFixed(4);
+            window.remainingTokens = (TOTAL_SUPPLY_BASE - window.totalBurned).toLocaleString();
+            window.progressPercent = ((window.totalBurned / TOTAL_SUPPLY_BASE) * 100).toFixed(4);
+            
+            console.log("Burned:", window.burnedTokens, "Remaining:", window.remainingTokens, "Progress:", window.progressPercent);
             
             // Actualizar barra de progreso
             const progressBar = document.getElementById('countdownProgressBar');
@@ -692,12 +735,16 @@
 
         // --- Verificar y ejecutar quemas pendientes ---
         async function checkAndExecuteBurns() {
-            if (!window.db || !window.isAuthReady) return;
+            if (!window.db || !window.isAuthReady) {
+                console.log("checkAndExecuteBurns: DB or auth not ready");
+                return;
+            }
 
             const now = new Date();
             const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
             
             try {
+                console.log("Checking for pending burns...");
                 // Buscar votos cuya fecha ya pasó y no han sido ejecutados
                 const votesRef = collection(window.db, VOTES_COLLECTION);
                 const votesQuery = query(votesRef);
@@ -751,6 +798,7 @@
                             
                             if (burnSnapshot.empty) {
                                 // Ejecutar la quema
+                                console.log("Executing burn for month:", monthKey);
                                 await executeBurn(winningDate, burnMonthKey, votes);
                             }
                         }
@@ -768,19 +816,20 @@
         // --- Ejecutar quema real ---
         async function executeBurn(date, monthKey, votes) {
             try {
+                console.log("Executing burn for date:", date);
                 // 1. Registrar evento de quema
                 const burnEventsRef = collection(window.db, BURN_EVENTS_COLLECTION);
                 await addDoc(burnEventsRef, {
                     date: date,
                     month: monthKey,
-                    amount: window.MONTHLY_BURN,
+                    amount: MONTHLY_BURN,
                     executedAt: Timestamp.now(),
                     totalVotes: votes.length,
                     winningVotes: votes.filter(v => v.date === date).length
                 });
                 
                 // 2. Actualizar contadores
-                window.totalBurned += window.MONTHLY_BURN;
+                window.totalBurned += MONTHLY_BURN;
                 updateSupplyCounters();
                 await updateAppStats();
                 
@@ -789,13 +838,13 @@
                 const monthName = new Date(`${monthKey}-01`).toLocaleString(window.currentLanguage === 'es' ? 'es-ES' : 'en-US', { month: 'long', year: 'numeric' });
                 
                 await addDoc(chatRef, {
-                    message: `🔥 ¡QUEMA EJECUTADA! Se han quemado ${window.MONTHLY_BURN} AERO como resultado de la votación de ${monthName}. Fecha ganadora: ${date}`,
+                    message: `🔥 ¡QUEMA EJECUTADA! Se han quemado ${MONTHLY_BURN} AERO como resultado de la votación de ${monthName}. Fecha ganadora: ${date}`,
                     senderId: 'System',
                     timestamp: Timestamp.now(),
                     isSystem: true,
                 });
                 
-                console.log(`Burn executed for ${date}: ${window.MONTHLY_BURN} AERO burned`);
+                console.log(`Burn executed for ${date}: ${MONTHLY_BURN} AERO burned`);
                 
             } catch (error) {
                 console.error("Error executing burn:", error);
@@ -804,13 +853,18 @@
 
         // --- Cargar eventos de quema ejecutados ---
         async function loadBurnEvents() {
-            if (!window.db || !window.isAuthReady) return;
+            if (!window.db || !window.isAuthReady) {
+                console.log("loadBurnEvents: DB or auth not ready");
+                return;
+            }
 
             const burnEventsRef = collection(window.db, BURN_EVENTS_COLLECTION);
             const burnEventsQuery = query(burnEventsRef, orderBy("executedAt", "desc"));
 
             onSnapshot(burnEventsQuery, (snapshot) => {
                 const historyContainer = document.getElementById('burnHistoryList');
+                if (!historyContainer) return;
+                
                 historyContainer.innerHTML = '';
                 
                 if (snapshot.empty) {
@@ -857,29 +911,43 @@
 
         // --- Airdrops Logic con autenticación ---
         function loadAirdrops() {
-            if (!window.db || !window.isAuthReady) return;
+            if (!window.db || !window.isAuthReady) {
+                console.log("loadAirdrops: DB or auth not ready");
+                return;
+            }
 
+            console.log("Loading airdrops...");
             const airdropsRef = collection(window.db, AIRDROPS_COLLECTION);
             const airdropsQuery = query(airdropsRef, orderBy("claimedAt", "desc"));
 
             onSnapshot(airdropsQuery, (snapshot) => {
+                console.log("Airdrops snapshot received, count:", snapshot.size);
                 const airdrops = [];
                 snapshot.forEach((doc) => {
                     airdrops.push({...doc.data(), id: doc.id});
                 });
                 
                 const airdropCount = airdrops.length;
-                const totalHolders = window.INITIAL_HOLDER_COUNT + airdropCount;
+                const totalHolders = INITIAL_HOLDER_COUNT + airdropCount;
                 
                 // Actualizar contador de holders
-                document.getElementById('holdersCount').textContent = totalHolders.toLocaleString();
+                const holdersCountElement = document.getElementById('holdersCount');
+                if (holdersCountElement) {
+                    holdersCountElement.textContent = totalHolders.toLocaleString();
+                }
                 
                 // Actualizar meta de holders
-                document.getElementById('holdersGoalText').textContent = `${totalHolders.toLocaleString()} / ${window.HOLDER_GOAL.toLocaleString()}`;
+                const holdersGoalElement = document.getElementById('holdersGoalText');
+                if (holdersGoalElement) {
+                    holdersGoalElement.textContent = `${totalHolders.toLocaleString()} / ${HOLDER_GOAL.toLocaleString()}`;
+                }
                 
                 // Actualizar barra de progreso
-                const progress = (totalHolders / window.HOLDER_GOAL) * 100;
-                document.getElementById('holdersProgressBar').style.width = `${Math.min(progress, 100)}%`;
+                const progress = (totalHolders / HOLDER_GOAL) * 100;
+                const progressBar = document.getElementById('holdersProgressBar');
+                if (progressBar) {
+                    progressBar.style.width = `${Math.min(progress, 100)}%`;
+                }
 
                 // Actualizar UI de airdrops
                 updateAirdropsUI(airdrops);
@@ -892,6 +960,7 @@
         }
 
         function updateAirdropsUI(airdrops) {
+            console.log("Updating airdrops UI, next amount:", window.nextAirdropAmount);
             // Actualizar botón de airdrop
             const airdropButton = document.getElementById('airdropButton');
             if (airdropButton) {
@@ -914,6 +983,8 @@
 
         function updateAirdropsList(airdrops) {
             const listContainer = document.getElementById('airdropAddressesList');
+            if (!listContainer) return;
+            
             listContainer.innerHTML = '';
             
             if (airdrops.length === 0) {
@@ -924,7 +995,7 @@
                 recentAirdrops.forEach(airdrop => {
                     const fullAddress = airdrop.address;
                     const claimedAmount = airdrop.amount;
-                    const percentage = (claimedAmount / window.TOTAL_SUPPLY_BASE) * 100;
+                    const percentage = (claimedAmount / TOTAL_SUPPLY_BASE) * 100;
                     const timeAgo = getTimeAgo(airdrop.claimedAt);
                     
                     const listItem = document.createElement('li');
@@ -986,6 +1057,8 @@
         
         function setupDatePicker() {
             const input = document.getElementById('burnDateInput');
+            if (!input) return;
+            
             const firstDay = getNextMonthFirstDay();
             const lastDay = getNextMonthLastDay();
             
@@ -995,8 +1068,12 @@
         }
 
         function loadBurnVotes() {
-            if (!window.db || !window.isAuthReady) return;
+            if (!window.db || !window.isAuthReady) {
+                console.log("loadBurnVotes: DB or auth not ready");
+                return;
+            }
 
+            console.log("Loading burn votes...");
             const votesRef = collection(window.db, VOTES_COLLECTION);
             const votesQuery = query(votesRef);
             
@@ -1005,6 +1082,7 @@
             const totalVotesElement = document.getElementById('totalVotesCount');
 
             onSnapshot(votesQuery, (snapshot) => {
+                console.log("Votes snapshot received, count:", snapshot.size);
                 const currentVotesMap = {};
                 
                 const today = new Date();
@@ -1028,59 +1106,74 @@
                 });
                 
                 const totalCurrentVotes = Object.values(currentVotesMap).reduce((a, b) => a + b, 0);
-                totalVotesElement.textContent = totalCurrentVotes.toLocaleString();
+                if (totalVotesElement) {
+                    totalVotesElement.textContent = totalCurrentVotes.toLocaleString();
+                }
 
                 // Resultados actuales
-                resultsContainer.innerHTML = '';
-                let winningDate = translations[window.currentLanguage].vote_no_votes;
-                let maxVotes = -1;
-                
-                const sortedVotesArray = Object.entries(currentVotesMap).sort(([, a], [, b]) => b - a);
+                if (resultsContainer) {
+                    resultsContainer.innerHTML = '';
+                    let winningDate = translations[window.currentLanguage].vote_no_votes;
+                    let maxVotes = -1;
+                    
+                    const sortedVotesArray = Object.entries(currentVotesMap).sort(([, a], [, b]) => b - a);
 
-                if (sortedVotesArray.length === 0) {
-                    resultsContainer.innerHTML = `<p class="text-gray-500 italic p-4" data-localize="vote_no_votes_full"></p>`;
-                } else {
-                    sortedVotesArray.forEach(([date, count]) => {
-                        const percent = totalCurrentVotes > 0 ? ((count / totalCurrentVotes) * 100).toFixed(1) : 0;
-                        if (count > maxVotes) {
-                            maxVotes = count;
-                            winningDate = date;
-                        }
+                    if (sortedVotesArray.length === 0) {
+                        resultsContainer.innerHTML = `<p class="text-gray-500 italic p-4" data-localize="vote_no_votes_full"></p>`;
+                    } else {
+                        sortedVotesArray.forEach(([date, count]) => {
+                            const percent = totalCurrentVotes > 0 ? ((count / totalCurrentVotes) * 100).toFixed(1) : 0;
+                            if (count > maxVotes) {
+                                maxVotes = count;
+                                winningDate = date;
+                            }
 
-                        const bar = document.createElement('div');
-                        bar.className = 'mb-3';
-                        bar.innerHTML = `
-                            <div class="flex justify-between text-sm mb-1">
-                                <span class="font-mono text-aero-light">${date}</span>
-                                <span class="font-bold text-aero-blue">${count} vote${count !== 1 ? 's' : ''} (${percent}%)</span>
-                            </div>
-                            <div class="w-full bg-gray-700 rounded-full h-2.5">
-                                <div class="bg-aero-blue h-2.5 rounded-full transition-all duration-500" style="width: ${percent}%;"></div>
-                            </div>
-                        `;
-                        resultsContainer.appendChild(bar);
-                    });
+                            const bar = document.createElement('div');
+                            bar.className = 'mb-3';
+                            bar.innerHTML = `
+                                <div class="flex justify-between text-sm mb-1">
+                                    <span class="font-mono text-aero-light">${date}</span>
+                                    <span class="font-bold text-aero-blue">${count} vote${count !== 1 ? 's' : ''} (${percent}%)</span>
+                                </div>
+                                <div class="w-full bg-gray-700 rounded-full h-2.5">
+                                    <div class="bg-aero-blue h-2.5 rounded-full transition-all duration-500" style="width: ${percent}%;"></div>
+                                </div>
+                            `;
+                            resultsContainer.appendChild(bar);
+                        });
+                    }
                 }
-                winningDateElement.innerHTML = winningDate;
+                
+                if (winningDateElement) {
+                    winningDateElement.innerHTML = winningDate;
+                }
                 
                 window.setLanguage(window.currentLanguage);
                 
             }, (error) => {
                 console.error("Error loading votes from Firestore:", error);
-                winningDateElement.innerHTML = "Error";
+                if (winningDateElement) {
+                    winningDateElement.innerHTML = "Error";
+                }
             });
         }
 
         // --- Chat/Forum Logic ---
         function loadChatMessages() {
-            if (!window.db || !window.isAuthReady) return;
+            if (!window.db || !window.isAuthReady) {
+                console.log("loadChatMessages: DB or auth not ready");
+                return;
+            }
 
+            console.log("Loading chat messages...");
             const chatRef = collection(window.db, CHAT_COLLECTION);
             const chatQuery = query(chatRef, orderBy("timestamp", "asc"));
 
             const chatContainer = document.getElementById('chatMessages');
+            if (!chatContainer) return;
 
             onSnapshot(chatQuery, (snapshot) => {
+                console.log("Chat snapshot received, count:", snapshot.size);
                 chatContainer.innerHTML = '';
                 const fragment = document.createDocumentFragment();
                 
@@ -1123,6 +1216,7 @@
         
         // --- Gemini AI Functions ---
         async function getGeminiResponse(userQuery) {
+            console.log("Getting Gemini response for query:", userQuery);
             const systemPrompt = "You are the Aerocoin AI expert. Provide concise and helpful answers related to Aerocoin, its deflationary mechanics, tokenomics, or general crypto knowledge. Keep the response to 2-3 sentences max. If the question is political or controversial, state you are an AI focused on Aerocoin.";
             
             const payload = {
@@ -1138,6 +1232,7 @@
 
             for (let attempt = 0; attempt < maxRetries; attempt++) {
                 try {
+                    console.log(`Gemini API attempt ${attempt + 1}/${maxRetries}`);
                     response = await fetch(GEMINI_API_URL, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -1147,12 +1242,16 @@
                     if (response.ok) {
                         const result = await response.json();
                         const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
+                        console.log("Gemini response received");
                         return text || (window.currentLanguage === 'es' ? "Lo siento, no pude generar una respuesta." : "Sorry, I couldn't generate a response.");
                     } else {
-                        throw new Error(`API returned status ${response.status}`);
+                        const errorText = await response.text();
+                        console.error(`Gemini API returned status ${response.status}:`, errorText);
+                        throw new Error(`API returned status ${response.status}: ${errorText.substring(0, 100)}`);
                     }
                 } catch (error) {
                     lastError = error;
+                    console.error(`Gemini API attempt ${attempt + 1} failed:`, error);
                     if (attempt < maxRetries - 1) {
                         await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
                     }
@@ -1163,10 +1262,14 @@
         }
 
         window.sendMessage = async () => {
+            console.log("sendMessage called");
             const inputElement = document.getElementById('chatInput');
             const message = inputElement.value.trim();
             
-            if (!message || !window.db || !window.isAuthReady) return;
+            if (!message || !window.db || !window.isAuthReady) {
+                console.log("Cannot send message: no message or not ready");
+                return;
+            }
 
             const sendButton = document.getElementById('chatSendButton');
             sendButton.disabled = true;
@@ -1184,8 +1287,11 @@
                     isSystem: false,
                 });
                 
+                console.log("User message saved");
+                
                 // 2. Check for question and get AI response
                 if (message.includes('?') || message.toLowerCase().startsWith('what') || message.toLowerCase().startsWith('cómo') || message.toLowerCase().startsWith('qué')) {
+                    console.log("Question detected, getting AI response");
                     const aiResponse = await getGeminiResponse(message);
                     
                     // 3. Save AI response as system message
@@ -1195,6 +1301,8 @@
                         timestamp: Timestamp.now(),
                         isSystem: true,
                     });
+                    
+                    console.log("AI response saved");
                 }
                 
                 inputElement.value = '';
@@ -1209,8 +1317,11 @@
         };
 
         window.analyzeMarketSentiment = async () => {
+            console.log("analyzeMarketSentiment called");
             const analysisContainer = document.getElementById('sentimentAnalysisResult');
             const analyzeButton = document.getElementById('analyzeButton');
+
+            if (!analysisContainer || !analyzeButton) return;
 
             analysisContainer.innerHTML = `<p class="text-gray-500 text-center" data-localize="loading_sentiment"></p>`;
             analysisContainer.classList.remove('hidden');
@@ -1223,12 +1334,9 @@
                 const systemPrompt = "You are a specialized crypto market analyst. Your task is to provide a very brief, single-paragraph summary (2-3 sentences max) on the current market sentiment (bullish, bearish, or neutral) specifically concerning deflationary micro-cap tokens on the Binance Smart Chain (BSC). Focus on trends relevant to scarcity and token burns. Output only the summary text.";
                 
                 const userQuery = "Summarize the current market outlook for deflationary BSC tokens, referencing any relevant news or trends.";
-                const apiKey = GEMINI_API_KEY;
-                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`;
-
+                
                 const payload = {
                     contents: [{ parts: [{ text: userQuery }] }],
-                    tools: [{ "google_search": {} }],
                     systemInstruction: {
                         parts: [{ text: systemPrompt }]
                     },
@@ -1240,7 +1348,8 @@
 
                 for (let attempt = 0; attempt < maxRetries; attempt++) {
                     try {
-                        response = await fetch(apiUrl, {
+                        console.log(`Market analysis attempt ${attempt + 1}/${maxRetries}`);
+                        response = await fetch(GEMINI_API_URL, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify(payload)
@@ -1248,11 +1357,15 @@
                         
                         if (response.ok) {
                             result = await response.json();
+                            console.log("Market analysis response received");
                             break;
                         } else {
+                            const errorText = await response.text();
+                            console.error(`Market analysis API returned status ${response.status}:`, errorText);
                             throw new Error(`API returned status ${response.status}`);
                         }
                     } catch (error) {
+                        console.error(`Market analysis attempt ${attempt + 1} failed:`, error);
                         if (attempt < maxRetries - 1) {
                             await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
                         } else {
@@ -1261,31 +1374,11 @@
                     }
                 }
                 
-                const candidate = result.candidates?.[0];
+                const candidate = result?.candidates?.[0];
                 const text = candidate?.content?.parts?.[0]?.text || translations[window.currentLanguage].chat_error;
                 
-                let sources = [];
-                const groundingMetadata = candidate?.groundingMetadata;
-                if (groundingMetadata?.groundingAttributions) {
-                    sources = groundingMetadata.groundingAttributions
-                        .map(attribution => ({
-                            uri: attribution.web?.uri,
-                            title: attribution.web?.title,
-                        }))
-                        .filter(source => source.uri && source.title);
-                }
-
                 let htmlContent = `<p class="text-aero-light mb-4 text-justify">${text}</p>`;
                 
-                if (sources.length > 0) {
-                    htmlContent += `<p class="text-sm font-semibold text-aero-blue mt-4" data-localize="sentiment_sources"></p>`;
-                    htmlContent += `<ul class="list-disc list-inside text-xs text-gray-500 space-y-1">`;
-                    sources.forEach((source, index) => {
-                        htmlContent += `<li><a href="${source.uri}" target="_blank" rel="noopener noreferrer" class="hover:underline">${source.title}</a></li>`;
-                    });
-                    htmlContent += `</ul>`;
-                }
-
                 analysisContainer.innerHTML = htmlContent;
 
             } catch (e) {
@@ -1303,8 +1396,15 @@
 
         // --- Airdrop Claim Logic con autenticación ---
         window.claimAirdrop = async () => {
+            console.log("=== claimAirdrop called ===");
+            console.log("Current user:", currentUser);
+            console.log("isAuthReady:", isAuthReady);
+            console.log("nextAirdropAmount:", window.nextAirdropAmount);
+            console.log("DB available:", !!window.db);
+            
             // Verificar autenticación
             if (!currentUser) {
+                console.log("No user, showing auth modal");
                 showAuthModal();
                 showMessage('authError', translations[window.currentLanguage].auth_required_airdrop, 'error');
                 return;
@@ -1348,6 +1448,7 @@
                 const userAirdropsSnapshot = await getDocs(userAirdropsQuery);
 
                 if (!userAirdropsSnapshot.empty) {
+                    console.log("User already claimed airdrop");
                     messageElement.textContent = translations[window.currentLanguage].airdrop_user_limit;
                     messageElement.classList.remove('hidden', 'text-green-500');
                     messageElement.classList.add('text-yellow-500');
@@ -1357,11 +1458,13 @@
                     const addressSnapshot = await getDocs(addressQuery);
 
                     if (!addressSnapshot.empty) {
+                        console.log("Address already used");
                         messageElement.textContent = translations[window.currentLanguage].airdrop_duplicate;
                         messageElement.classList.remove('hidden', 'text-green-500');
                         messageElement.classList.add('text-yellow-500');
                     } else {
                         const airdropAmount = window.nextAirdropAmount || 1;
+                        console.log("Claiming airdrop amount:", airdropAmount);
 
                         // Registrar airdrop con userId
                         await addDoc(airdropsRef, {
@@ -1374,6 +1477,8 @@
                             type: 'airdrop'
                         });
                         
+                        console.log("Airdrop registered successfully");
+                        
                         // Actualizar perfil de usuario
                         if (window.userProfile) {
                             const userRef = doc(window.db, USERS_COLLECTION, currentUser.uid);
@@ -1383,6 +1488,7 @@
                                 lastAirdropClaim: Timestamp.now()
                             });
                             window.userProfile.totalAirdropsClaimed = (window.userProfile.totalAirdropsClaimed || 0) + 1;
+                            console.log("User profile updated");
                         }
                         
                         messageElement.textContent = translations[window.currentLanguage].airdrop_success.replace('{amount}', airdropAmount);
@@ -1393,12 +1499,16 @@
                         
                         // Actualizar cantidad para próximo airdrop
                         window.nextAirdropAmount = airdropAmount + 1;
+                        console.log("Next airdrop amount set to:", window.nextAirdropAmount);
                         
                         // Actualizar estadísticas
                         await updateAppStats();
                         
                         // Actualizar UI inmediatamente
                         updateAirdropsUI([]);
+                        
+                        // Actualizar botón inmediatamente
+                        airdropButton.textContent = translations[window.currentLanguage].btn_airdrop.replace('{amount}', window.nextAirdropAmount);
                         
                         // Notificar en chat
                         const chatRef = collection(window.db, CHAT_COLLECTION);
@@ -1408,6 +1518,8 @@
                             timestamp: Timestamp.now(),
                             isSystem: true,
                         });
+                        
+                        console.log("Chat notification sent");
                     }
                 }
 
@@ -1427,8 +1539,12 @@
 
         // --- BURN VOTING LOGIC con autenticación ---
         window.voteForBurnDate = async () => {
+            console.log("=== voteForBurnDate called ===");
+            console.log("Current user:", currentUser);
+            
             // Verificar autenticación
             if (!currentUser) {
+                console.log("No user, showing auth modal");
                 showAuthModal();
                 showMessage('authError', translations[window.currentLanguage].auth_required_vote, 'error');
                 return;
@@ -1486,6 +1602,8 @@
                     votedAt: Timestamp.now(),
                 });
                 
+                console.log("Vote submitted successfully");
+                
                 // Actualizar perfil de usuario
                 if (window.userProfile) {
                     const userRef = doc(window.db, USERS_COLLECTION, currentUser.uid);
@@ -1494,6 +1612,7 @@
                         lastVote: Timestamp.now()
                     });
                     window.userProfile.totalVotesCast = (window.userProfile.totalVotesCast || 0) + 1;
+                    console.log("User profile updated");
                 }
                 
                 messageElement.textContent = translations[window.currentLanguage].vote_success;
@@ -1851,13 +1970,28 @@
             if (airdropDescElement) {
                 airdropDescElement.innerHTML = translations[lang].airdrop_desc.replace('{amount}', amount);
             }
+            
+            // Update auth UI
+            updateAuthUI();
         };
 
         // Initialize language on load
         window.addEventListener('load', () => {
+            console.log("Page loaded, initializing...");
             document.getElementById('holdersCount').textContent = INITIAL_HOLDER_COUNT.toLocaleString();
             window.setLanguage(window.currentLanguage);
             updateThemeIcon();
+            
+            // Debug info after load
+            setTimeout(() => {
+                console.log("=== DEBUG INFO AFTER LOAD ===");
+                console.log("Firebase ready:", window.db ? "YES" : "NO");
+                console.log("Auth ready:", window.isAuthReady);
+                console.log("Current user:", currentUser);
+                console.log("User profile:", window.userProfile);
+                console.log("Next airdrop:", window.nextAirdropAmount);
+                console.log("=================");
+            }, 3000);
         });
         
         // --- COPY CONTRACT FUNCTIONALITY ---
@@ -1928,7 +2062,6 @@
         window.setLanguage = function(lang) {
             originalSetLanguage(lang);
             updateThemeIcon();
-            updateAuthUI();
         };
         
         const originalToggleTheme = window.toggleTheme;
@@ -2224,8 +2357,9 @@
                     <div class="card-bg p-8 rounded-xl shadow-2xl border-t-4 card-border-primary flex flex-col justify-between border">
                         <div>
                             <div class="text-4xl text-aero-blue mb-4 flex items-center">
+                                <!-- SVG CORREGIDO -->
                                 <svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20v-2m0 2h2m-2v-2m-2-3a4 4 0 100-8 4 4 0 000 8zM12 20h2v-2a3 3 0 00-2.356-1.857M12 20v-2m0 2h2m-2v-2m-2-3a4 4 0 100-8 4 4 0 000 8z" />
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m0 0A6 6 0 013 10a6 6 0 0112 0z" />
                                 </svg>
                                 <span class="font-semibold" data-localize="holders_title">AERO Holders</span>
                             </div>
@@ -2427,5 +2561,23 @@
             Contract: 0x19F7ac2439143E7d63a8B55AD7242036897647cA
         </p>
     </footer>
+
+    <!-- Script de depuración -->
+    <script>
+        // Depuración adicional
+        setTimeout(() => {
+            console.log("=== FINAL DEBUG CHECK ===");
+            console.log("Window.db available:", !!window.db);
+            console.log("Window.isAuthReady:", window.isAuthReady);
+            console.log("Current user:", currentUser);
+            console.log("User profile:", window.userProfile);
+            console.log("Next airdrop amount:", window.nextAirdropAmount);
+            console.log("Airdrop button exists:", !!document.getElementById('airdropButton'));
+            console.log("Vote button exists:", !!document.getElementById('voteButton'));
+            console.log("Auth button exists:", !!document.getElementById('authButton'));
+            console.log("User info exists:", !!document.getElementById('userInfo'));
+            console.log("=================");
+        }, 5000);
+    </script>
 </body>
 </html>
