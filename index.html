@@ -278,6 +278,19 @@
             getDoc,
             updateDoc
         } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        const APP_ID = "aerocoin"; // ID único para Aerocoin
+    const BASE_PATH = `artifacts/${APP_ID}`;
+            // Colecciones para Aerocoin
+    const AIRDROPS_COLLECTION = `${BASE_PATH}/public/data/aerocoin_airdrops`;
+    const VOTES_COLLECTION = `${BASE_PATH}/public/data/aerocoin_burn_votes`;
+    const CHAT_COLLECTION = `${BASE_PATH}/public/data/aerocoin_chat`;
+    const BURN_EVENTS_COLLECTION = `${BASE_PATH}/public/data/aerocoin_burn_events`;
+    const APP_STATS_COLLECTION = `${BASE_PATH}/public/data/aerocoin_stats`;
+
+    // Perfiles de usuario (reutilizables entre apps)
+    const USERS_COLLECTION = "users"; // Fuera de artifacts para reutilización
+    // --- FIN DE LAS CONSTANTES ---
         
         // --- Configuración de Firebase ---
         const firebaseConfig = {
@@ -302,12 +315,6 @@
         const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
         
         // --- Configuración de colecciones ---
-        const AIRDROPS_COLLECTION = "aerocoin_airdrops";
-        const VOTES_COLLECTION = "aerocoin_burn_votes";
-        const CHAT_COLLECTION = "aerocoin_chat";
-        const BURN_EVENTS_COLLECTION = "aerocoin_burn_events";
-        const APP_STATS_COLLECTION = "aerocoin_stats";
-        const USERS_COLLECTION = "aerocoin_users";
         
         let db, auth;
         let currentUser = null;
