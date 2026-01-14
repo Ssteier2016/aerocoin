@@ -3,75 +3,56 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Airport Tycoon Ultra - GitHub Edition</title>
+    <title>Airport Tycoon Ultra - Isometric Curves Edition</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-auth.js";
-        import { getFirestore, doc, setDoc, updateDoc, onSnapshot, collection, query, deleteDoc, serverTimestamp, getDocs } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-firestore.js";
+        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-auth.js";
+        import { getFirestore, doc, setDoc, onSnapshot, collection } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-firestore.js";
 
-        // --- Manejo de errores de configuración para GitHub/Producción ---
+        // --- Configuración Segura ---
         let db = null;
-        let auth = null;
-        let appId = 'local-tycoon';
+        let appId = 'airport-isometric-v2';
 
         try {
             if (typeof __firebase_config !== 'undefined') {
                 const firebaseConfig = JSON.parse(__firebase_config);
                 const app = initializeApp(firebaseConfig);
-                auth = getAuth(app);
+                const auth = getAuth(app);
                 db = getFirestore(app);
-                appId = typeof __app_id !== 'undefined' ? __app_id : 'airport-tycoon-smart-v3';
+                signInAnonymously(auth);
             }
-        } catch (e) {
-            console.warn("Firebase no configurado. Ejecutando en modo local.");
-        }
+        } catch (e) { console.warn("Firebase offline mode."); }
 
         // --- Estado Global ---
         let scene, camera, renderer, raycaster, mouse, controls;
-        let currentUser = null, playerName = "Director";
         let gridMap = new Map(), airplanes = new Map(), localVehicles = [];
-        let currentTool = 'select', money = 80000, menuOpen = true;
+        let currentTool = 'select', money = 80000;
         let selectedEntity = null;
-        let tickCounter = 0;
+        let maintenanceTick = 0;
 
         const TILE_SIZE = 8;
-        const VIEW_RADIUS = 20;
+        const VIEW_RADIUS = 15;
         const COLORS = {
             grass: 0x14532d,
             runway: 0x111111,
-            platform: 0x4b5563, // Cemento gris
-            road: 0x374151,
-            office: 0x1e40af,
-            terminal: 0x0f172a,
-            fuel_station: 0x9a3412
+            platform: 0x4b5563, 
+            road: 0x374151
         };
 
         const PRICES = { 
-            runway: 2000, platform: 2500, road: 600, office: 6000, 
-            terminal: 15000, fuel_station: 10000,
-            bus: 4000, tractor: 3000, fuel_truck: 5000, mechanic_truck: 4500, cinta: 3500,
-            grass: 0 
+            runway: 2000, platform: 2500, road: 600, torre: 6000, 
+            terminal: 15000, bus: 4000, tractor: 3000, cinta: 3500, grass: 0 
         };
 
-        // --- Inicialización ---
-        async function init() {
-            if (auth) {
-                try {
-                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                        await signInWithCustomToken(auth, __initial_auth_token);
-                    } else {
-                        await signInAnonymously(auth);
-                    }
-                } catch (e) { console.error(e); }
-                onAuthStateChanged(auth, (user) => { if (user) currentUser = user; });
-            }
+        const textureLoader = new THREE.TextureLoader();
 
+        // --- Inicialización ---
+        function init() {
             document.getElementById('start-btn').onclick = () => {
-                playerName = document.getElementById('name-input').value || "Director";
                 document.getElementById('lobby').style.display = 'none';
                 document.getElementById('game-ui').style.display = 'block';
                 initGame();
@@ -84,16 +65,17 @@
             if (db) setupNetworking();
             animate();
             setInterval(gameLogicalTick, 1000); 
-            setInterval(maybeSpawnPlane, 15000);
+            setInterval(maybeSpawnPlane, 18000);
         }
 
         function setupThree() {
             scene = new THREE.Scene();
             scene.background = new THREE.Color(0x020617);
-            scene.fog = new THREE.FogExp2(0x020617, 0.001);
+            scene.fog = new THREE.FogExp2(0x020617, 0.0005);
 
-            camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 1, 3500);
-            camera.position.set(180, 180, 180);
+            camera = new THREE.PerspectiveCamera(30, window.innerWidth / window.innerHeight, 1, 4000);
+            camera.position.set(250, 250, 250); 
+            camera.lookAt(0, 0, 0);
 
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
@@ -102,12 +84,13 @@
 
             controls = new THREE.OrbitControls(camera, renderer.domElement);
             controls.enableDamping = true;
+            controls.enableRotate = false; // Ángulo estático 45°
+            controls.screenSpacePanning = true;
 
             const sun = new THREE.DirectionalLight(0xffffff, 1.5);
-            sun.position.set(200, 400, 100);
-            sun.castShadow = true;
+            sun.position.set(100, 300, 100);
             scene.add(sun);
-            scene.add(new THREE.AmbientLight(0xffffff, 0.4));
+            scene.add(new THREE.AmbientLight(0xffffff, 0.6));
 
             raycaster = new THREE.Raycaster();
             mouse = new THREE.Vector2();
@@ -131,8 +114,7 @@
         }
 
         function refreshNeighbors(x, z) {
-            const dirs = [[0,1], [0,-1], [1,0], [-1,0]];
-            dirs.forEach(([dx, dz]) => {
+            [[0,1],[0,-1],[1,0],[-1,0]].forEach(([dx,dz]) => {
                 const n = gridMap.get(`${x+dx},${z+dz}`);
                 if(n && (n.userData.type === 'road' || n.userData.type === 'platform')) {
                     updateTileUI(x+dx, z+dz, n.userData.type);
@@ -140,16 +122,90 @@
             });
         }
 
-        // --- Mundo e Infraestructura ---
-        function updateInfiniteGrid() {
-            const cx = Math.round(controls.target.x / TILE_SIZE);
-            const cz = Math.round(controls.target.z / TILE_SIZE);
-            for(let x = cx - VIEW_RADIUS; x <= cx + VIEW_RADIUS; x++) {
-                for(let z = cz - VIEW_RADIUS; z <= cz + VIEW_RADIUS; z++) {
-                    const key = `${x},${z}`;
-                    if(!gridMap.has(key)) createBaseTile(x, z);
-                }
+        // --- Utilidades de Gráficos ---
+        function createEntitySprite(texturePath, size = 12) {
+            const texture = textureLoader.load(texturePath);
+            const mat = new THREE.SpriteMaterial({ map: texture, transparent: true });
+            const sprite = new THREE.Sprite(mat);
+            sprite.scale.set(size, size, 1);
+            sprite.center.set(0.5, 0); 
+            return sprite;
+        }
+
+        // --- Generación de Caminos con Curvas ---
+        function createSmartRoadLines(x, z) {
+            const group = new THREE.Group();
+            const mat = new THREE.MeshBasicMaterial({ color: 0xfacc15 });
+            const thickness = 0.4;
+            const radius = TILE_SIZE / 2;
+
+            const check = (dx, dz) => {
+                const n = gridMap.get(`${x+dx},${z+dz}`);
+                return n && (n.userData.type === 'road' || n.userData.type === 'platform' || n.userData.type === 'runway');
+            };
+
+            const N = check(0, -1), S = check(0, 1), E = check(1, 0), W = check(-1, 0);
+            const count = [N, S, E, W].filter(v => v).length;
+
+            if (count === 2 && ((N && S) || (E && W))) {
+                // Rectas
+                const geo = new THREE.PlaneGeometry(N||S ? thickness : TILE_SIZE, N||S ? TILE_SIZE : thickness);
+                const line = new THREE.Mesh(geo, mat);
+                line.rotation.x = -Math.PI/2; line.position.y = 0.06;
+                group.add(line);
+            } else if (count === 2) {
+                // CURVAS REDONDEADAS
+                const arcGeo = new THREE.TorusGeometry(radius, thickness/2, 8, 16, Math.PI/2);
+                const arc = new THREE.Mesh(arcGeo, mat);
+                arc.rotation.x = Math.PI/2;
+                arc.position.y = 0.06;
+                
+                if (S && E) { arc.position.set(radius, 0, radius); arc.rotation.z = Math.PI; }
+                if (S && W) { arc.position.set(-radius, 0, radius); arc.rotation.z = -Math.PI/2; }
+                if (N && W) { arc.position.set(-radius, 0, -radius); arc.rotation.z = 0; }
+                if (N && E) { arc.position.set(radius, 0, -radius); arc.rotation.z = Math.PI/2; }
+                group.add(arc);
+            } else {
+                // Intersecciones (Hub central)
+                if(N) group.add(createRect(0, -radius/2, thickness, radius, mat));
+                if(S) group.add(createRect(0, radius/2, thickness, radius, mat));
+                if(E) group.add(createRect(radius/2, 0, radius, thickness, mat));
+                if(W) group.add(createRect(-radius/2, 0, radius, thickness, mat));
+                const center = new THREE.Mesh(new THREE.CircleGeometry(thickness*0.8, 8), mat);
+                center.rotation.x = -Math.PI/2; center.position.y = 0.061; group.add(center);
             }
+            return group;
+        }
+
+        function createRect(x, z, w, l, mat) {
+            const m = new THREE.Mesh(new THREE.PlaneGeometry(w, l), mat);
+            m.rotation.x = -Math.PI/2; m.position.set(x, 0.06, z);
+            return m;
+        }
+
+        function updateTileUI(x, z, type) {
+            const mesh = gridMap.get(`${x},${z}`) || createBaseTile(x, z);
+            mesh.material.color.set(COLORS[type] || COLORS.grass);
+            mesh.userData.type = type;
+            if(mesh.userData.deco) scene.remove(mesh.userData.deco);
+
+            const group = new THREE.Group();
+            if(type === 'runway') {
+                const line = new THREE.Mesh(new THREE.PlaneGeometry(1.5, TILE_SIZE), new THREE.MeshBasicMaterial({color: 0xffffff}));
+                line.rotation.x = -Math.PI/2; line.position.y = 0.05; group.add(line);
+            } else if(type === 'road' || type === 'platform') {
+                group.add(createSmartRoadLines(x, z));
+            } else if(type === 'torre') {
+                const sprite = createEntitySprite('torre.png', 16);
+                sprite.position.y = 1; group.add(sprite);
+            } else if(type === 'terminal') {
+                const b = new THREE.Mesh(new THREE.BoxGeometry(TILE_SIZE, 14, TILE_SIZE), new THREE.MeshStandardMaterial({color: 0x1e293b}));
+                b.position.y = 7; group.add(b);
+            }
+            
+            group.position.set(x*TILE_SIZE, 0, z*TILE_SIZE);
+            scene.add(group);
+            mesh.userData.deco = group;
         }
 
         function createBaseTile(x, z) {
@@ -159,132 +215,37 @@
             mesh.rotation.x = -Math.PI / 2;
             mesh.position.set(x * TILE_SIZE, 0, z * TILE_SIZE);
             mesh.userData = { gridX: x, gridZ: z, type: 'grass' };
+            const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color: 0xffffff, opacity: 0.1, transparent: true }));
+            mesh.add(edges);
             scene.add(mesh);
             gridMap.set(`${x},${z}`, mesh);
             return mesh;
         }
 
-        function updateTileUI(x, z, type) {
-            const mesh = gridMap.get(`${x},${z}`) || createBaseTile(x, z);
-            mesh.material.color.set(COLORS[type]);
-            mesh.userData.type = type;
-            if(mesh.userData.deco) scene.remove(mesh.userData.deco);
-
-            const group = new THREE.Group();
-            if(type === 'runway') {
-                const line = new THREE.Mesh(new THREE.PlaneGeometry(1.2, TILE_SIZE), new THREE.MeshBasicMaterial({color: 0xffffff}));
-                line.rotation.x = -Math.PI/2; line.position.y = 0.05;
-                group.add(line);
-            } else if(type === 'road' || type === 'platform') {
-                group.add(createSmartRoadLines(x, z));
-            } else if(type === 'terminal') {
-                const b = new THREE.Mesh(new THREE.BoxGeometry(TILE_SIZE*0.9, 15, TILE_SIZE*0.9), new THREE.MeshStandardMaterial({color: 0x1e293b}));
-                b.position.y = 7.5; group.add(b);
-            }
-            
-            group.position.set(x*TILE_SIZE, 0, z*TILE_SIZE);
-            scene.add(group);
-            mesh.userData.deco = group;
-        }
-
-        function createSmartRoadLines(x, z) {
-            const group = new THREE.Group();
-            const mat = new THREE.MeshBasicMaterial({ color: 0xfacc15 });
-            const thickness = 0.35;
-            const h = TILE_SIZE / 2;
-
-            const check = (dx, dz) => {
-                const n = gridMap.get(`${x+dx},${z+dz}`);
-                return n && (n.userData.type === 'road' || n.userData.type === 'platform' || n.userData.type === 'runway');
-            };
-
-            const N = check(0, -1), S = check(0, 1), E = check(1, 0), W = check(-1, 0);
-            
-            if (N || S) {
-                const v = new THREE.Mesh(new THREE.PlaneGeometry(thickness, TILE_SIZE), mat);
-                v.rotation.x = -Math.PI/2; v.position.y = 0.06; group.add(v);
-            }
-            if (E || W) {
-                const hLine = new THREE.Mesh(new THREE.PlaneGeometry(TILE_SIZE, thickness), mat);
-                hLine.rotation.x = -Math.PI/2; hLine.position.y = 0.06; group.add(hLine);
-            }
-            // Pequeño círculo central para redondear cruces
-            if ([N,S,E,W].filter(x=>x).length > 1) {
-                const dot = new THREE.Mesh(new THREE.CircleGeometry(thickness*1.2, 8), mat);
-                dot.rotation.x = -Math.PI/2; dot.position.y = 0.061; group.add(dot);
-            }
-            return group;
-        }
-
-        // --- Aviones ---
+        // --- Lógica de Juego ---
         function maybeSpawnPlane() {
             const runways = Array.from(gridMap.values()).filter(t => t.userData.type === 'runway');
-            if (runways.length < 2 || airplanes.size > 4) return;
-
+            if (runways.length < 2 || airplanes.size > 5) return;
             const landingStrip = runways[Math.floor(Math.random()*runways.length)];
             const id = "plane_" + Math.random().toString(36).substr(2, 6);
-            const model = Math.random() > 0.6 ? 'boeing' : 'embraer';
-            
-            const planeData = {
-                id, state: 'APPROACHING', model,
-                x: landingStrip.position.x - 600, y: 150, z: landingStrip.position.z,
-                targetX: landingStrip.position.x, targetZ: landingStrip.position.z,
-                fuel: 100, maintenance: 100
-            };
-
-            updatePlaneMesh(id, planeData);
-            updateMoney(1000);
-            showNotification("+1,000$ Aterrizaje");
+            const data = { id, state: 'APPROACHING', x: landingStrip.position.x - 400, y: 120, z: landingStrip.position.z, targetX: landingStrip.position.x, targetZ: landingStrip.position.z };
+            const sprite = createEntitySprite('avion.png', 16);
+            airplanes.set(id, { mesh: sprite, data });
+            updateMoney(1000); showNotification("+1,000$ Aterrizaje");
         }
 
-        function updatePlaneMesh(id, data) {
-            let p = airplanes.get(id);
-            if(!p) {
-                const group = new THREE.Group();
-                const scale = data.model === 'boeing' ? 1.5 : 1;
-                const fuse = new THREE.Mesh(new THREE.CylinderGeometry(1.5*scale, 1.5*scale, 12*scale, 12), new THREE.MeshStandardMaterial({color: 0xffffff}));
-                fuse.rotation.z = Math.PI/2; group.add(fuse);
-                const wing = new THREE.Mesh(new THREE.BoxGeometry(2.5*scale, 0.2, 18*scale), new THREE.MeshStandardMaterial({color: 0xffffff}));
-                group.add(wing);
-                const tail = new THREE.Mesh(new THREE.BoxGeometry(3*scale, 3*scale, 0.4), new THREE.MeshStandardMaterial({color: 0x1d4ed8}));
-                tail.position.set(-5*scale, 1.5*scale, 0); group.add(tail);
-
-                scene.add(group);
-                p = { mesh: group, data, id };
-                airplanes.set(id, p);
-            }
-            p.data = data;
-        }
-
-        // --- Vehículos ---
         function buyVehicle(type) {
-            const cost = PRICES[type];
-            if(money < cost) return;
-            updateMoney(-cost);
-
-            const g = new THREE.Group();
-            let color = 0x3b82f6; 
-            if(type === 'tractor') color = 0x10b981;
-            if(type === 'fuel_truck') color = 0xef4444;
-            if(type === 'cinta') color = 0xf59e0b;
-
-            const body = new THREE.Mesh(new THREE.BoxGeometry(2.5, 1.6, 5), new THREE.MeshStandardMaterial({color}));
-            body.position.y = 0.8; g.add(body);
-
-            scene.add(g);
-            localVehicles.push({
-                mesh: g, type, targetX: controls.target.x, targetZ: controls.target.z,
-                mode: 'IDLE'
-            });
+            if(money < PRICES[type]) return;
+            updateMoney(-PRICES[type]);
+            const sprite = createEntitySprite(`${type}.png`, 10);
+            sprite.position.set(controls.target.x, 0, controls.target.z);
+            scene.add(sprite);
+            localVehicles.push({ mesh: sprite, type, targetX: controls.target.x, targetZ: controls.target.z });
         }
 
-        // --- Loop de Juego ---
         function gameLogicalTick() {
-            tickCounter++;
-            if (tickCounter % 5 === 0) {
-                updateMoney(-100);
-                showFeeFeedback(100);
-            }
+            maintenanceTick++;
+            if (maintenanceTick % 5 === 0) { updateMoney(-100); showFeeFeedback(100); }
         }
 
         function animate() {
@@ -292,47 +253,27 @@
             controls.update();
             updateInfiniteGrid();
 
-            // Aviones: Animación y Separación
             airplanes.forEach((p, id) => {
                 const d = p.data;
-                const mesh = p.mesh;
-
-                // Separación
-                let blocked = false;
-                airplanes.forEach(o => { if(o.id !== id && mesh.position.distanceTo(o.mesh.position) < 25) blocked = true; });
-
                 if(d.state === 'APPROACHING') {
-                    mesh.position.lerp(new THREE.Vector3(d.targetX, d.y, d.targetZ), 0.02);
-                    if(mesh.position.distanceTo(new THREE.Vector3(d.targetX, d.y, d.targetZ)) < 5) d.state = 'LANDING';
+                    p.mesh.position.lerp(new THREE.Vector3(d.targetX, d.y, d.targetZ), 0.02);
+                    if(p.mesh.position.distanceTo(new THREE.Vector3(d.targetX, d.y, d.targetZ)) < 5) d.state = 'LANDING';
                 } else if(d.state === 'LANDING') {
-                    const rEnd = new THREE.Vector3(d.targetX + 100, 0.5, d.targetZ);
-                    mesh.position.lerp(rEnd, 0.05);
-                    mesh.lookAt(rEnd); mesh.rotateY(Math.PI/2);
-                    if(mesh.position.y < 1.5) d.state = 'GROUND';
-                } else if(d.state === 'MOVING' && !blocked) {
-                    const dest = new THREE.Vector3(d.targetX, 0.5, d.targetZ);
-                    if(mesh.position.distanceTo(dest) > 2) {
-                        const dir = new THREE.Vector3().subVectors(dest, mesh.position).normalize();
-                        mesh.position.add(dir.multiplyScalar(0.5));
-                        mesh.lookAt(dest); mesh.rotateY(Math.PI/2);
-                    } else { d.state = 'GROUND'; }
+                    p.mesh.position.lerp(new THREE.Vector3(d.targetX + 60, 0, d.targetZ), 0.05);
+                    if(p.mesh.position.y < 1) d.state = 'GROUND';
+                } else if(d.state === 'MOVING') {
+                    const dest = new THREE.Vector3(d.targetX, 0, d.targetZ);
+                    if(p.mesh.position.distanceTo(dest) > 1.5) p.mesh.position.add(new THREE.Vector3().subVectors(dest, p.mesh.position).normalize().multiplyScalar(0.6));
+                    else d.state = 'GROUND';
                 } else if(d.state === 'TAKEOFF') {
-                    mesh.position.x += 1.5; mesh.position.y += 0.8;
-                    if(mesh.position.y > 180) {
-                        scene.remove(mesh); airplanes.delete(id);
-                        updateMoney(1000); showNotification("+1,000$ Despegue");
-                    }
+                    p.mesh.position.x += 2; p.mesh.position.y += 1;
+                    if(p.mesh.position.y > 150) { scene.remove(p.mesh); airplanes.delete(id); updateMoney(1000); showNotification("+1,000$ Despegue"); }
                 }
             });
 
-            // Vehículos terrestres
             localVehicles.forEach(v => {
                 const dest = new THREE.Vector3(v.targetX, 0, v.targetZ);
-                if(v.mesh.position.distanceTo(dest) > 1.5) {
-                    const dir = new THREE.Vector3().subVectors(dest, v.mesh.position).normalize();
-                    v.mesh.position.add(dir.multiplyScalar(0.6));
-                    v.mesh.lookAt(v.targetX, 0, v.targetZ);
-                }
+                if(v.mesh.position.distanceTo(dest) > 1.5) v.mesh.position.add(new THREE.Vector3().subVectors(dest, v.mesh.position).normalize().multiplyScalar(0.7));
             });
 
             renderer.render(scene, camera);
@@ -344,82 +285,76 @@
             mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
             raycaster.setFromCamera(mouse, camera);
             const intersects = raycaster.intersectObjects(scene.children, true);
-            
-            if(intersects.length > 0) {
-                // Seleccionar Entidad (Avión o Vehículo)
-                let found = null;
-                airplanes.forEach(p => { if(intersects[0].object.parent === p.mesh || intersects[0].object === p.mesh) found = p; });
-                localVehicles.forEach(v => { if(intersects[0].object.parent === v.mesh || intersects[0].object === v.mesh) found = v; });
+            if(intersects.length === 0) return;
 
-                if(found) {
-                    selectedEntity = found;
-                    showNotification(`${(found.type || 'Avion').toUpperCase()} Seleccionado`);
-                    return;
+            const hit = intersects[0].object;
+            let clickedEntity = null;
+            airplanes.forEach(p => { if(hit === p.mesh) clickedEntity = p; });
+            localVehicles.forEach(v => { if(hit === v.mesh) clickedEntity = v; });
+
+            if(clickedEntity) {
+                selectedEntity = clickedEntity;
+                showNotification(`${(clickedEntity.type || 'Avion').toUpperCase()} Seleccionado`);
+                return;
+            }
+
+            const ground = intersects.find(i => i.object.userData.gridX !== undefined);
+            if(ground) {
+                const tile = ground.object.userData;
+                if(selectedEntity && currentTool === 'select') {
+                    const isPlane = !selectedEntity.type;
+                    const isSpecialVehicle = (selectedEntity.type === 'tractor' || selectedEntity.type === 'cinta');
+                    
+                    if (isPlane) {
+                        if(tile.type === 'platform' || tile.type === 'runway') {
+                            selectedEntity.data.targetX = ground.object.position.x;
+                            selectedEntity.data.targetZ = ground.object.position.z;
+                            selectedEntity.data.state = (tile.type === 'runway') ? 'TAKEOFF' : 'MOVING';
+                        }
+                    } else if (isSpecialVehicle) {
+                        // RESTRICCIÓN: Tractor y Cinta solo en PLATAFORMA
+                        if(tile.type === 'platform') {
+                            selectedEntity.targetX = ground.object.position.x;
+                            selectedEntity.targetZ = ground.object.position.z;
+                        } else { showNotification("Prohibido: Solo pueden andar en Plataforma"); }
+                    } else {
+                        // Otros (Bus) pueden andar en calles y plataformas
+                        if(tile.type === 'road' || tile.type === 'platform') {
+                            selectedEntity.targetX = ground.object.position.x;
+                            selectedEntity.targetZ = ground.object.position.z;
+                        } else { showNotification("Prohibido: Solo en Calles/Plataformas"); }
+                    }
+                    selectedEntity = null; return;
                 }
 
-                const hit = intersects.find(i => i.object.userData.gridX !== undefined);
-                if(hit) {
-                    const tile = hit.object.userData;
-
-                    // Mover entidad seleccionada
-                    if(selectedEntity && currentTool === 'select') {
-                        const isPlane = !selectedEntity.type;
-                        const isRoad = tile.type === 'road' || tile.type === 'platform' || tile.type === 'runway';
-                        
-                        if(isPlane) {
-                            selectedEntity.data.targetX = hit.object.position.x;
-                            selectedEntity.data.targetZ = hit.object.position.z;
-                            selectedEntity.data.state = (tile.type === 'runway') ? 'TAKEOFF' : 'MOVING';
-                            selectedEntity = null;
-                        } else if(isRoad) {
-                            selectedEntity.targetX = hit.object.position.x;
-                            selectedEntity.targetZ = hit.object.position.z;
-                            selectedEntity = null;
-                        } else {
-                            showNotification("Prohibido: Solo circular por calles");
-                        }
-                        return;
-                    }
-
-                    // Construcción / Demolición
-                    if(currentTool === 'grass') {
-                        const refund = PRICES[tile.type] * 0.5;
-                        if(refund > 0) {
-                            updateMoney(refund); showNotification(`+${refund}$ Reembolso`);
-                            updateTileUI(tile.gridX, tile.gridZ, 'grass');
-                            if(db) setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'world_tiles', `${tile.gridX}_${tile.gridZ}`), { x: tile.gridX, z: tile.gridZ, type: 'grass' });
-                        }
-                    } else if(currentTool !== 'select') {
-                        const cost = PRICES[currentTool];
-                        if(money >= cost) {
-                            updateMoney(-cost);
-                            updateTileUI(tile.gridX, tile.gridZ, currentTool);
-                            if(db) setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'world_tiles', `${tile.gridX}_${tile.gridZ}`), { x: tile.gridX, z: tile.gridZ, type: currentTool });
-                        }
+                if(currentTool === 'grass') {
+                    const refund = PRICES[tile.type] * 0.5;
+                    if(refund > 0) { updateMoney(refund); showNotification(`+${refund}$ Reembolso`); }
+                    updateTileUI(tile.gridX, tile.gridZ, 'grass');
+                    if(db) setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'world_tiles', `${tile.gridX}_${tile.gridZ}`), { x: tile.gridX, z: tile.gridZ, type: 'grass' });
+                } else if(currentTool !== 'select') {
+                    const cost = PRICES[currentTool];
+                    if(money >= cost) {
+                        updateMoney(-cost); updateTileUI(tile.gridX, tile.gridZ, currentTool);
+                        if(db) setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'world_tiles', `${tile.gridX}_${tile.gridZ}`), { x: tile.gridX, z: tile.gridZ, type: currentTool });
                     }
                 }
             }
         }
 
-        // --- Utilidades UI ---
-        function updateMoney(amt) {
-            money += amt;
-            document.getElementById('money-val').innerText = `$${Math.floor(money).toLocaleString()}`;
+        function updateInfiniteGrid() {
+            const cx = Math.round(controls.target.x / TILE_SIZE);
+            const cz = Math.round(controls.target.z / TILE_SIZE);
+            for(let x = cx - VIEW_RADIUS; x <= cx + VIEW_RADIUS; x++) {
+                for(let z = cz - VIEW_RADIUS; z <= cz + VIEW_RADIUS; z++) {
+                    if(!gridMap.has(`${x},${z}`)) createBaseTile(x, z);
+                }
+            }
         }
 
-        function showNotification(msg) {
-            const n = document.getElementById('notif');
-            n.innerText = msg; n.style.opacity = 1;
-            setTimeout(() => n.style.opacity = 0, 2000);
-        }
-
-        function showFeeFeedback(amt) {
-            const fb = document.getElementById('fee-feedback');
-            fb.innerText = `-$${amt} (Gasto Mant.)`;
-            fb.style.opacity = 1;
-            setTimeout(() => fb.style.opacity = 0, 1000);
-        }
-
+        function updateMoney(amt) { money += amt; document.getElementById('money-val').innerText = `$${Math.floor(money).toLocaleString()}`; }
+        function showNotification(msg) { const n = document.getElementById('notif'); n.innerText = msg; n.style.opacity = 1; setTimeout(() => n.style.opacity = 0, 2000); }
+        function showFeeFeedback(amt) { const fb = document.getElementById('fee-feedback'); fb.innerText = `-$${amt} (Mant.)`; fb.style.opacity = 1; setTimeout(() => fb.style.opacity = 0, 1000); }
         function setupDraggableMenu() {
             const s = document.getElementById('sidebar'), h = document.getElementById('drag-handle');
             let d = false, ox, oy;
@@ -429,31 +364,20 @@
             h.addEventListener('touchstart', st); document.addEventListener('touchmove', mv);
             document.addEventListener('mouseup', () => d = false); document.addEventListener('touchend', () => d = false);
         }
-
-        window.setTool = (t) => {
-            currentTool = t;
-            document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active-tool'));
-            document.getElementById('btn-'+t)?.classList.add('active-tool');
-        };
+        window.setTool = (t) => { currentTool = t; document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active-tool')); document.getElementById('btn-'+t)?.classList.add('active-tool'); };
         window.buyV = (t) => buyVehicle(t);
-
-        init();
+        window.onload = init;
     </script>
 
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;700&display=swap');
         body { margin: 0; overflow: hidden; background: #020617; font-family: 'Outfit', sans-serif; color: white; }
-        .glass { background: rgba(15, 23, 42, 0.9); backdrop-filter: blur(15px); border: 1px solid rgba(255,255,255,0.1); }
-        .tool-btn { 
-            width: 100%; padding: 10px; margin-bottom: 6px; border-radius: 10px; 
-            text-align: left; transition: 0.2s; color: #94a3b8; font-size: 13px;
-            display: flex; align-items: center; gap: 8px;
-        }
-        .tool-btn:hover { background: rgba(255,255,255,0.05); color: white; }
-        .active-tool { background: #2563eb !important; color: white !important; }
+        .glass { background: rgba(15, 23, 42, 0.9); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); }
+        .tool-btn { width: 100%; padding: 10px; margin-bottom: 6px; border-radius: 10px; text-align: left; transition: 0.2s; color: #94a3b8; font-size: 13px; display: flex; align-items: center; gap: 10px; }
+        .active-tool { background: #3b82f6 !important; color: white !important; }
         #sidebar { position: fixed; top: 20px; right: 20px; width: 280px; z-index: 100; max-height: 85vh; display: flex; flex-direction: column; overflow: hidden; }
-        #drag-handle { cursor: move; padding: 12px; border-bottom: 1px solid rgba(255,255,255,0.1); font-weight: bold; background: rgba(255,255,255,0.05); }
-        .money-badge { background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 14px 28px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        #drag-handle { cursor: move; padding: 12px; border-bottom: 1px solid rgba(255,255,255,0.1); font-weight: bold; background: rgba(255,255,255,0.1); }
+        .money-badge { background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 14px 28px; border-radius: 20px; }
         #notif { position: fixed; bottom: 40px; left: 50%; transform: translateX(-50%); background: #1e293b; padding: 10px 24px; border-radius: 40px; opacity: 0; transition: 0.4s; border: 1px solid #3b82f6; z-index: 1000; }
         #fee-feedback { position: fixed; top: 100px; left: 32px; color: #f87171; font-weight: bold; font-size: 14px; transition: 0.4s; opacity: 0; pointer-events: none; }
     </style>
@@ -463,46 +387,38 @@
     <div id="lobby" class="fixed inset-0 z-[2000] flex items-center justify-center bg-slate-950 p-6">
         <div class="glass p-12 rounded-[3rem] max-w-sm w-full text-center border-blue-500/30">
             <h1 class="text-4xl font-bold text-white mb-2">AIRPORT <span class="text-blue-500">PRO</span></h1>
-            <p class="text-slate-500 text-sm mb-10 tracking-widest uppercase">Tycoon Simulator</p>
-            <input id="name-input" type="text" class="w-full bg-slate-900 border border-slate-800 rounded-2xl p-4 text-white mb-8 outline-none" placeholder="Nombre de Aeropuerto">
-            <button id="start-btn" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-5 rounded-2xl shadow-2xl transition-all active:scale-95">
-                COMENZAR
-            </button>
+            <p class="text-slate-500 text-sm mb-10 tracking-widest uppercase">Isometric 45° - Smart Roads</p>
+            <button id="start-btn" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-5 rounded-2xl shadow-2xl transition-all">INICIAR OPERACIONES</button>
         </div>
     </div>
 
     <div id="game-ui" style="display: none;">
         <div id="header-ui" class="fixed top-8 left-8 z-50">
             <div class="money-badge flex flex-col">
-                <span class="text-[10px] font-bold opacity-70 uppercase mb-1">Fondos Disponibles</span>
+                <span class="text-[10px] font-bold opacity-70 uppercase mb-1">Tesorería</span>
                 <span id="money-val" class="text-3xl font-bold">$80,000</span>
             </div>
             <div id="fee-feedback">-$100 (Mant.)</div>
         </div>
-
         <div id="notif">Seleccionado</div>
-
         <div id="sidebar" class="glass rounded-3xl shadow-2xl">
-            <div id="drag-handle">⚙️ Gestión Operativa</div>
+            <div id="drag-handle">🏗️ Gestión Isométrica</div>
             <div id="menu-content" class="p-5 overflow-y-auto">
                 <p class="text-slate-500 text-[9px] font-bold uppercase mb-2 tracking-widest">Navegación</p>
-                <button id="btn-select" onclick="setTool('select')" class="tool-btn active-tool"><span>🖱️</span> Seleccionar / Mover</button>
-                <button id="btn-grass" onclick="setTool('grass')" class="tool-btn"><span>🌱</span> Demoler (Recup. 50%)</button>
-                
-                <p class="text-blue-400 text-[9px] font-bold uppercase mt-4 mb-2 tracking-widest">Pistas e Infraestructura</p>
+                <button id="btn-select" onclick="setTool('select')" class="tool-btn active-tool"><span>🖱️</span> Mover / Seleccionar</button>
+                <button id="btn-grass" onclick="setTool('grass')" class="tool-btn"><span>🌱</span> Demoler (50%)</button>
+                <p class="text-blue-400 text-[9px] font-bold uppercase mt-4 mb-2 tracking-widest">Obras</p>
                 <button id="btn-runway" onclick="setTool('runway')" class="tool-btn"><span>🛤️</span> Pista Landing ($2k)</button>
-                <button id="btn-road" onclick="setTool('road')" class="tool-btn"><span>🛣️</span> Calle de Rodaje ($600)</button>
+                <button id="btn-road" onclick="setTool('road')" class="tool-btn"><span>🛣️</span> Calle Rodaje ($600)</button>
                 <button id="btn-platform" onclick="setTool('platform')" class="tool-btn"><span>🏗️</span> Plataforma Gris ($2.5k)</button>
-                <button id="btn-terminal" onclick="setTool('terminal')" class="tool-btn"><span>🏢</span> Terminal ($15k)</button>
-
+                <button id="btn-torre" onclick="setTool('torre')" class="tool-btn"><span>📡</span> Torre Control ($6k)</button>
                 <p class="text-yellow-500 text-[9px] font-bold uppercase mt-4 mb-2 tracking-widest">Flota</p>
-                <button onclick="buyV('bus')" class="tool-btn bg-slate-800/40"><span>🚌</span> Bus Pasajeros ($4k)</button>
+                <button onclick="buyV('bus')" class="tool-btn bg-slate-800/40"><span>🚌</span> Bus ($4k)</button>
                 <button onclick="buyV('tractor')" class="tool-btn bg-slate-800/40"><span>🚜</span> Tractor ($3k)</button>
-                <button onclick="buyV('cinta')" class="tool-btn bg-slate-800/40"><span>🔋</span> Cinta Equipaje ($3.5k)</button>
+                <button onclick="buyV('cinta')" class="tool-btn bg-slate-800/40"><span>🔋</span> Cinta ($3.5k)</button>
             </div>
         </div>
     </div>
-
 </body>
 </html>
 
