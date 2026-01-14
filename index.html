@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Airport Tycoon Ultra - Smart Logistics</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-auth.js";
+        import { getFirestore, doc, setDoc, updateDoc, onSnapshot, collection, query, deleteDoc, serverTimestamp, getDocs } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-firestore.js";
+
+        const firebaseConfig = JSON.parse(__firebase_config);
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'airport-tycoon-smart-v3';
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        // --- Estado Global ---
+        let scene, camera, renderer, raycaster, mouse, controls;
+        let currentUser = null, playerName = "Director";
+        let gridMap = new Map(), airplanes = new Map(), localVehicles = [];
+        let passengers = [], luggage = [];
+        let currentTool = 'select', money = 80000, menuOpen = true;
+        let selectedEntity = null;
+
+        const TILE_SIZE = 8;
+        const VIEW_RADIUS = 20;
+        const COLORS = {
+            grass: 0x14532d,
+            runway: 0x111111,
+            platform: 0x4b5563,
+            road: 0x374151,
+            office: 0x1e40af,
+            terminal: 0x0f172a,
+            hangar: 0x1e293b,
+            fuel_station: 0x9a3412
+        };
+
+        const PRICES = { 
+            runway: 2000, platform: 2500, road: 600, office: 6000, 
+            terminal: 15000, hangar: 18000, fuel_station: 10000,
+            bus: 4000, tractor: 3000, fuel_truck: 5000, mechanic_truck: 4500, cinta: 3500,
+            grass: 0 
+        };
+
+        // --- Inicialización ---
+        async function init() {
+            try {
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+            } catch (e) { console.error(e); }
+
+            onAuthStateChanged(auth, (user) => {
+                if (user) {
+                    currentUser = user;
+                    document.getElementById('start-btn').onclick = () => {
+                        playerName = document.getElementById('name-input').value || "Director";
+                        document.getElementById('lobby').style.display = 'none';
+                        document.getElementById('game-ui').style.display = 'block';
+                        initGame();
+                    };
+                }
+            });
+            setupDraggableMenu();
+        }
+
+        function initGame() {
+            setupThree();
+            setupNetworking();
+            animate();
+        }
+
+        function setupThree() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x020617);
+            scene.fog = new THREE.FogExp2(0x020617, 0.001);
+
+            camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 1, 3500);
+            camera.position.set(160, 160, 160);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            document.body.appendChild(renderer.domElement);
+
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+
+            const sun = new THREE.DirectionalLight(0xffffff, 1.5);
+            sun.position.set(200, 400, 100);
+            sun.castShadow = true;
+            scene.add(sun);
+            scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+
+            raycaster = new THREE.Raycaster();
+            mouse = new THREE.Vector2();
+
+            window.addEventListener('resize', onWindowResize);
+            renderer.domElement.addEventListener('pointerdown', onPointerDown);
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // --- Red ---
+        function setupNetworking() {
+            if (!currentUser) return;
+            const worldRef = collection(db, 'artifacts', appId, 'public', 'data', 'world_tiles');
+            onSnapshot(worldRef, (snap) => {
+                snap.docChanges().forEach(change => {
+                    const d = change.doc.data();
+                    updateTileUI(d.x, d.z, d.type, d.gateId);
+                    refreshNeighbors(d.x, d.z);
+                });
+            });
+
+            const planesRef = collection(db, 'artifacts', appId, 'public', 'data', 'planes');
+            onSnapshot(planesRef, (snap) => {
+                snap.docChanges().forEach(change => {
+                    if (change.type === 'removed') removePlaneMesh(change.doc.id);
+                    else updatePlaneMesh(change.doc.id, change.doc.data());
+                });
+            });
+
+            setInterval(maybeSpawnPlane, 20000);
+            setInterval(gameLogicalTick, 1000); 
+        }
+
+        function refreshNeighbors(x, z) {
+            const dirs = [[0,1], [0,-1], [1,0], [-1,0]];
+            dirs.forEach(([dx, dz]) => {
+                const n = gridMap.get(`${x+dx},${z+dz}`);
+                if(n && (n.userData.type === 'road' || n.userData.type === 'platform')) {
+                    updateTileUI(x+dx, z+dz, n.userData.type, n.userData.gateId);
+                }
+            });
+        }
+
+        // --- Construcción e Infraestructura ---
+        function updateInfiniteGrid() {
+            const cx = Math.round(controls.target.x / TILE_SIZE);
+            const cz = Math.round(controls.target.z / TILE_SIZE);
+            for(let x = cx - VIEW_RADIUS; x <= cx + VIEW_RADIUS; x++) {
+                for(let z = cz - VIEW_RADIUS; z <= cz + VIEW_RADIUS; z++) {
+                    const key = `${x},${z}`;
+                    if(!gridMap.has(key)) createBaseTile(x, z);
+                }
+            }
+        }
+
+        function createBaseTile(x, z) {
+            const geo = new THREE.PlaneGeometry(TILE_SIZE, TILE_SIZE);
+            const mat = new THREE.MeshStandardMaterial({ color: COLORS.grass });
+            const mesh = new THREE.Mesh(geo, mat);
+            mesh.rotation.x = -Math.PI / 2;
+            mesh.position.set(x * TILE_SIZE, 0, z * TILE_SIZE);
+            mesh.receiveShadow = true;
+            mesh.userData = { gridX: x, gridZ: z, type: 'grass' };
+            scene.add(mesh);
+            gridMap.set(`${x},${z}`, mesh);
+            return mesh;
+        }
+
+        function updateTileUI(x, z, type, gateId) {
+            const mesh = gridMap.get(`${x},${z}`) || createBaseTile(x, z);
+            mesh.material.color.set(COLORS[type]);
+            mesh.userData.type = type;
+            mesh.userData.gateId = gateId || null;
+            if(mesh.userData.deco) scene.remove(mesh.userData.deco);
+
+            const group = new THREE.Group();
+            if(type === 'runway') {
+                const line = new THREE.Mesh(new THREE.PlaneGeometry(1, TILE_SIZE), new THREE.MeshBasicMaterial({color: 0xffffff}));
+                line.rotation.x = -Math.PI/2; line.position.y = 0.05;
+                group.add(line);
+            } else if(type === 'road' || type === 'platform') {
+                group.add(createSmartRoadLines(x, z));
+                if(type === 'platform' && gateId) {
+                    const label = makeTextSprite(`GATE ${gateId}`, { fontsize: 40 });
+                    label.position.set(0, 6, 0);
+                    group.add(label);
+                }
+            } else if(type === 'terminal') {
+                const b = new THREE.Mesh(new THREE.BoxGeometry(TILE_SIZE*0.9, 16, TILE_SIZE*0.9), new THREE.MeshStandardMaterial({color: 0x1e293b}));
+                b.position.y = 8; group.add(b);
+            } else if(type === 'hangar') {
+                const b = new THREE.Mesh(new THREE.BoxGeometry(TILE_SIZE*1.4, 12, TILE_SIZE*1.4), new THREE.MeshStandardMaterial({color: 0x334155}));
+                b.position.y = 6; group.add(b);
+            } else if(type === 'office') {
+                const b = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 2, 35), new THREE.MeshStandardMaterial({color: 0x2563eb}));
+                b.position.y = 17.5; group.add(b);
+            }
+            
+            group.position.set(x*TILE_SIZE, 0, z*TILE_SIZE);
+            scene.add(group);
+            mesh.userData.deco = group;
+        }
+
+        function createSmartRoadLines(x, z) {
+            const group = new THREE.Group();
+            const mat = new THREE.MeshBasicMaterial({ color: 0xfacc15 });
+            const thickness = 0.3;
+            const h = TILE_SIZE / 2;
+
+            const check = (dx, dz) => {
+                const n = gridMap.get(`${x+dx},${z+dz}`);
+                return n && (n.userData.type === 'road' || n.userData.type === 'platform' || n.userData.type === 'runway');
+            };
+
+            const N = check(0, -1), S = check(0, 1), E = check(1, 0), W = check(-1, 0);
+            
+            // Si es una recta
+            if ((N && S && !E && !W)) {
+                const l = new THREE.Mesh(new THREE.PlaneGeometry(thickness, TILE_SIZE), mat);
+                l.rotation.x = -Math.PI/2; l.position.y = 0.06; group.add(l);
+            } else if ((E && W && !N && !S)) {
+                const l = new THREE.Mesh(new THREE.PlaneGeometry(TILE_SIZE, thickness), mat);
+                l.rotation.x = -Math.PI/2; l.position.y = 0.06; group.add(l);
+            } else {
+                // Esquinas curvas o intersecciones
+                if(N) group.add(createLinePart(0, -h/2, thickness, h, mat));
+                if(S) group.add(createLinePart(0, h/2, thickness, h, mat));
+                if(E) group.add(createLinePart(h/2, 0, h, thickness, mat));
+                if(W) group.add(createLinePart(-h/2, 0, h, thickness, mat));
+                
+                // Círculo central para suavizar cruces
+                const dot = new THREE.Mesh(new THREE.CircleGeometry(thickness*0.8, 8), mat);
+                dot.rotation.x = -Math.PI/2; dot.position.y = 0.061; group.add(dot);
+            }
+            return group;
+        }
+
+        function createLinePart(px, pz, w, l, mat) {
+            const m = new THREE.Mesh(new THREE.PlaneGeometry(w, l), mat);
+            m.rotation.x = -Math.PI/2; m.position.set(px, 0.06, pz);
+            return m;
+        }
+
+        // --- Aviones ---
+        async function maybeSpawnPlane() {
+            const runways = Array.from(gridMap.values()).filter(t => t.userData.type === 'runway');
+            const platforms = Array.from(gridMap.values()).filter(t => t.userData.type === 'platform');
+            const busyGates = Array.from(airplanes.values()).map(p => p.data.gateX + "," + p.data.gateZ);
+            const freePlatforms = platforms.filter(p => !busyGates.includes(p.position.x + "," + p.position.z));
+
+            if (runways.length < 2 || freePlatforms.length === 0) return;
+
+            const landingStrip = runways[Math.floor(Math.random()*runways.length)];
+            const targetGate = freePlatforms[0];
+            const modelType = Math.random() > 0.7 ? 'boeing' : (Math.random() > 0.4 ? 'embraer' : 'avion');
+            
+            const id = "plane_" + Math.random().toString(36).substr(2, 6);
+            await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'planes', id), {
+                id, state: 'APPROACHING', model: modelType,
+                x: landingStrip.position.x - 600, y: 180, z: landingStrip.position.z,
+                targetX: landingStrip.position.x, targetZ: landingStrip.position.z,
+                gateX: targetGate.position.x, gateZ: targetGate.position.z,
+                fuel: 100, maintenance: 60 + Math.random()*30
+            });
+        }
+
+        function updatePlaneMesh(id, data) {
+            let p = airplanes.get(id);
+            if(!p) {
+                const group = new THREE.Group();
+                const scale = data.model === 'boeing' ? 1.4 : (data.model === 'embraer' ? 0.8 : 1);
+                const fuse = new THREE.Mesh(new THREE.CylinderGeometry(1.5*scale, 1.5*scale, 14*scale, 12), new THREE.MeshStandardMaterial({color: 0xffffff}));
+                fuse.rotation.z = Math.PI/2; group.add(fuse);
+                const wing = new THREE.Mesh(new THREE.BoxGeometry(3*scale, 0.2, 20*scale), new THREE.MeshStandardMaterial({color: 0xffffff}));
+                group.add(wing);
+                const tail = new THREE.Mesh(new THREE.BoxGeometry(4*scale, 4*scale, 0.4), new THREE.MeshStandardMaterial({color: 0x1d4ed8}));
+                tail.position.set(-6*scale, 2*scale, 0); group.add(tail);
+                const bars = createStatusBars();
+                bars.position.y = 8*scale; group.add(bars);
+                scene.add(group);
+                p = { mesh: group, bars, id };
+                airplanes.set(id, p);
+            }
+            p.data = data;
+        }
+
+        function createStatusBars() {
+            const group = new THREE.Group();
+            const bg = new THREE.Mesh(new THREE.PlaneGeometry(8, 1), new THREE.MeshBasicMaterial({color: 0x000000, transparent:true, opacity:0.6}));
+            group.add(bg);
+            const fBar = new THREE.Mesh(new THREE.PlaneGeometry(3.8, 0.35), new THREE.MeshBasicMaterial({color: 0xfacc15}));
+            fBar.position.set(-1.9, 0.2, 0.01); group.add(fBar);
+            const mBar = new THREE.Mesh(new THREE.PlaneGeometry(3.8, 0.35), new THREE.MeshBasicMaterial({color: 0x10b981}));
+            mBar.position.set(-1.9, -0.2, 0.01); group.add(mBar);
+            return group;
+        }
+
+        function removePlaneMesh(id) {
+            const p = airplanes.get(id);
+            if(p) { scene.remove(p.mesh); airplanes.delete(id); }
+        }
+
+        // --- Vehículos ---
+        function buyVehicle(type) {
+            const cost = PRICES[type];
+            if(money < cost) return;
+            updateMoney(-cost);
+
+            const g = new THREE.Group();
+            let color = 0x3b82f6; 
+            if(type === 'tractor') color = 0x10b981;
+            if(type === 'fuel_truck') color = 0xef4444;
+            if(type === 'mechanic_truck') color = 0x6366f1;
+            if(type === 'cinta') color = 0xd97706;
+
+            const body = new THREE.Mesh(new THREE.BoxGeometry(2.5, 1.8, 5), new THREE.MeshStandardMaterial({color}));
+            body.position.y = 0.9; g.add(body);
+            const bars = createStatusBars();
+            bars.scale.set(0.4, 0.4, 0.4); bars.position.y = 4;
+            g.add(bars);
+
+            scene.add(g);
+            localVehicles.push({
+                mesh: g, bars, type, state: 'IDLE', mode: 'AUTO',
+                fuel: 80, maxFuel: 80, maintenance: 100, 
+                targetX: controls.target.x, targetZ: controls.target.z,
+                cargo: [], assignedEntity: null
+            });
+        }
+
+        // --- Lógica Juego ---
+        function gameLogicalTick() {
+            let taxes = 0;
+            airplanes.forEach(p => { if(p.data.state === 'DOCKED') taxes += 35; });
+            if(taxes > 0) {
+                updateMoney(-taxes);
+                const fb = document.getElementById('fee-feedback');
+                fb.innerText = `-$${taxes} (ATC Fees)`;
+                fb.style.opacity = 1;
+                setTimeout(() => fb.style.opacity = 0, 800);
+            }
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            updateInfiniteGrid();
+
+            // Aviones con Separación
+            airplanes.forEach((p, id) => {
+                const d = p.data;
+                const mesh = p.mesh;
+                p.bars.lookAt(camera.position);
+                p.bars.children[1].scale.x = Math.max(0.01, d.fuel / 100);
+                p.bars.children[2].scale.x = Math.max(0.01, d.maintenance / 100);
+
+                let blocked = false;
+                airplanes.forEach(o => { 
+                    if(o.id !== id && mesh.position.distanceTo(o.mesh.position) < 20) {
+                        if(d.state === 'TAXI_TO_GATE' || d.state === 'TAXI_TO_TAKEOFF') blocked = true;
+                    }
+                });
+
+                if(d.state === 'APPROACHING') {
+                    mesh.position.lerp(new THREE.Vector3(d.targetX, d.y, d.targetZ), 0.02);
+                    if(mesh.position.distanceTo(new THREE.Vector3(d.targetX, d.y, d.targetZ)) < 5) d.state = 'LANDING';
+                } else if(d.state === 'LANDING') {
+                    const rEnd = new THREE.Vector3(d.targetX + 120, 0.5, d.targetZ);
+                    mesh.position.lerp(rEnd, 0.04);
+                    mesh.lookAt(rEnd); mesh.rotateY(Math.PI/2);
+                    if(mesh.position.y < 2) { d.state = 'TAXI_TO_GATE'; d.targetX = d.gateX; d.targetZ = d.gateZ; }
+                } else if(d.state === 'TAXI_TO_GATE' && !blocked) {
+                    const gate = new THREE.Vector3(d.gateX, 0.5, d.gateZ);
+                    if(mesh.position.distanceTo(gate) > 2.5) {
+                        const dir = new THREE.Vector3().subVectors(gate, mesh.position).normalize();
+                        mesh.position.add(dir.multiplyScalar(0.45));
+                        mesh.lookAt(gate); mesh.rotateY(Math.PI/2);
+                    } else { d.state = 'DOCKED'; if(!d.cargoSpawned) { spawnCargo(d.gateX, d.gateZ); d.cargoSpawned = true; } }
+                } else if(d.state === 'DOCKED') {
+                    if(d.fuel < 45) d.fuelTask = true;
+                    if(d.maintenance < 75) d.maintTask = true;
+                    const clear = !passengers.some(pg => Math.abs(pg.px - d.gateX) < 8) && !luggage.some(lg => Math.abs(lg.px - d.gateX) < 8);
+                    if(clear && d.fuel >= 98 && d.maintenance >= 98) {
+                        d.state = 'TAXI_TO_TAKEOFF';
+                        const rw = Array.from(gridMap.values()).find(t => t.userData.type === 'runway');
+                        d.targetX = rw.position.x + 800; d.targetZ = rw.position.z;
+                    }
+                } else if(d.state === 'TAXI_TO_TAKEOFF' && !blocked) {
+                    const sky = new THREE.Vector3(d.targetX, 220, d.targetZ);
+                    const dir = new THREE.Vector3().subVectors(sky, mesh.position).normalize();
+                    mesh.position.add(dir.multiplyScalar(1.3));
+                    mesh.lookAt(sky); mesh.rotateY(Math.PI/2);
+                    if(mesh.position.y > 150) deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'planes', id));
+                }
+            });
+
+            // Vehículos
+            localVehicles.forEach(v => {
+                v.bars.lookAt(camera.position);
+                v.bars.children[1].scale.x = Math.max(0.01, v.fuel / v.maxFuel);
+                v.bars.children[2].scale.x = Math.max(0.01, v.maintenance / 100);
+
+                const tPos = new THREE.Vector3(v.targetX, 0, v.targetZ);
+                if(v.mesh.position.distanceTo(tPos) > 1.5) {
+                    const d = new THREE.Vector3().subVectors(tPos, v.mesh.position).normalize();
+                    v.mesh.position.add(d.multiplyScalar(0.5));
+                    v.mesh.lookAt(v.targetX, 0, v.targetZ);
+                    v.fuel -= 0.01;
+                } else {
+                    if(v.mode === 'MANUAL') {
+                        v.state = 'IDLE'; 
+                    } else if(v.state === 'IDLE') {
+                        // IA Automática
+                        if(v.type === 'bus') {
+                            const t = passengers.find(p => p.state === 'WAITING');
+                            if(t) { v.targetX = t.px; v.targetZ = t.pz; v.state = 'PICKING'; }
+                        } else if(v.type === 'tractor' || v.type === 'cinta') {
+                            const t = luggage.find(l => l.state === 'WAITING');
+                            if(t) { v.targetX = t.px; v.targetZ = t.pz; v.state = 'PICKING'; }
+                        } else if(v.type === 'fuel_truck') {
+                            const t = Array.from(airplanes.values()).find(p => p.data.fuelTask);
+                            if(t) { v.targetX = t.data.gateX; v.targetZ = t.data.gateZ; v.assignedEntity = t; v.state = 'GOTO_PLANE'; }
+                        } else if(v.type === 'mechanic_truck') {
+                            const t = Array.from(airplanes.values()).find(p => p.data.maintTask);
+                            if(t) { v.targetX = t.data.gateX; v.targetZ = t.data.gateZ; v.assignedEntity = t; v.state = 'GOTO_PLANE'; }
+                        }
+                    } else if(v.state === 'GOTO_PLANE') {
+                        v.state = 'WORKING';
+                    } else if(v.state === 'WORKING') {
+                        const ent = v.assignedEntity;
+                        if(!ent || !ent.data) { v.state = 'IDLE'; return; }
+                        if(v.type === 'fuel_truck') {
+                            ent.data.fuel += 0.5; if(ent.data.fuel >= 100) { ent.data.fuelTask = false; v.state = 'IDLE'; }
+                        } else if(v.type === 'mechanic_truck') {
+                            ent.data.maintenance += 1.0; if(ent.data.maintenance >= 100) { ent.data.maintTask = false; v.state = 'IDLE'; }
+                        }
+                    } else if(v.state === 'PICKING') {
+                        const l = (v.type === 'bus') ? passengers : luggage;
+                        const here = l.filter(i => i.state === 'WAITING' && Math.abs(i.px - v.targetX) < 7);
+                        here.forEach(i => { i.state = 'LOADED'; scene.remove(i.mesh); v.cargo.push(i); });
+                        const term = Array.from(gridMap.values()).find(t => t.userData.type === 'terminal');
+                        if(term) { v.targetX = term.position.x; v.targetZ = term.position.z; v.state = 'DELIVERING'; }
+                    } else if(v.state === 'DELIVERING') {
+                        updateMoney(v.cargo.length * (v.type==='bus'?600:900));
+                        v.cargo = []; v.state = 'IDLE';
+                    }
+                }
+            });
+
+            renderer.render(scene, camera);
+        }
+
+        function spawnCargo(x, z) {
+            for(let i=0; i<6; i++) {
+                const p = new THREE.Mesh(new THREE.SphereGeometry(0.4), new THREE.MeshStandardMaterial({color:0x60a5fa}));
+                p.position.set(x + (Math.random()-0.5)*5, 0.4, z + (Math.random()-0.5)*5);
+                scene.add(p); passengers.push({ mesh: p, state: 'WAITING', px: x, pz: z });
+            }
+            for(let i=0; i<4; i++) {
+                const l = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.5, 1), new THREE.MeshStandardMaterial({color:0x92400e}));
+                l.position.set(x + (Math.random()-0.5)*5, 0.3, z + (Math.random()-0.5)*5);
+                scene.add(l); luggage.push({ mesh: l, state: 'WAITING', px: x, pz: z });
+            }
+        }
+
+        function updateMoney(amt) {
+            money += amt;
+            document.getElementById('money-val').innerText = `$${Math.floor(money).toLocaleString()}`;
+        }
+
+        function onPointerDown(e) {
+            if(e.target.closest('#sidebar') || e.target.closest('#header-ui')) return;
+            mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObjects(scene.children, true);
+            
+            if(selectedEntity && currentTool === 'select') {
+                const groundHit = intersects.find(i => i.object.userData.gridX !== undefined);
+                if(groundHit) {
+                    const targetType = groundHit.object.userData.type;
+                    if(targetType === 'road' || targetType === 'platform' || targetType === 'fuel_station') {
+                        selectedEntity.targetX = groundHit.object.position.x;
+                        selectedEntity.targetZ = groundHit.object.position.z;
+                        selectedEntity.mode = 'MANUAL';
+                        showStatusBox("Movimiento Manual: Destino fijado.");
+                    } else {
+                        showStatusBox("Error: Los vehículos solo circulan por calles.");
+                    }
+                    return;
+                }
+            }
+
+            if(intersects.length > 0) {
+                let vehicleMesh = null;
+                let obj = intersects[0].object;
+                while(obj) {
+                    const foundV = localVehicles.find(v => v.mesh === obj);
+                    if(foundV) { vehicleMesh = foundV; break; }
+                    obj = obj.parent;
+                }
+
+                if(vehicleMesh) {
+                    selectedEntity = vehicleMesh;
+                    showStatusBox(`${vehicleMesh.type.toUpperCase()} Seleccionado.`);
+                    return;
+                }
+
+                const hit = intersects.find(i => i.object.userData.gridX !== undefined);
+                if(hit && currentTool !== 'select') {
+                    const t = hit.object.userData;
+                    const cost = PRICES[currentTool];
+                    if(money >= cost) {
+                        updateMoney(-cost);
+                        let gId = null; if(currentTool === 'platform') gId = ++gateCounter;
+                        setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'world_tiles', `${t.gridX}_${t.gridZ}`), {
+                            x: t.gridX, z: t.gridZ, type: currentTool, gateId: gId
+                        });
+                    }
+                }
+            }
+        }
+
+        function showStatusBox(msg) {
+            const box = document.getElementById('status-msg');
+            box.innerText = msg; box.style.bottom = '100px';
+            setTimeout(() => box.style.bottom = '-100px', 3000);
+        }
+
+        function makeTextSprite(m, p) {
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d');
+            context.font = "Bold " + p.fontsize + "px Arial";
+            context.fillStyle = "white";
+            context.fillText(m, 0, p.fontsize);
+            const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(canvas) }));
+            sprite.scale.set(12, 6, 1);
+            return sprite;
+        }
+
+        function setupDraggableMenu() {
+            const s = document.getElementById('sidebar'), h = document.getElementById('drag-handle');
+            let d = false, ox, oy;
+            const st = (e) => { d = true; const ev = e.touches?e.touches[0]:e; ox = ev.clientX-s.offsetLeft; oy = ev.clientY-s.offsetTop; s.style.transition='none'; };
+            const mv = (e) => { if(!d) return; const ev = e.touches?e.touches[0]:e; s.style.left = (ev.clientX-ox)+'px'; s.style.top = (ev.clientY-oy)+'px'; s.style.right='auto'; };
+            h.addEventListener('mousedown', st); document.addEventListener('mousemove', mv);
+            h.addEventListener('touchstart', st); document.addEventListener('touchmove', mv);
+            document.addEventListener('mouseup', () => d = false); document.addEventListener('touchend', () => d = false);
+        }
+
+        window.toggleMenu = () => {
+            menuOpen = !menuOpen;
+            document.getElementById('menu-content').style.display = menuOpen ? 'block' : 'none';
+            document.getElementById('toggle-btn').innerText = menuOpen ? '−' : '+';
+        };
+        window.setTool = (t) => {
+            currentTool = t; if(t !== 'select') selectedEntity = null;
+            document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active-tool'));
+            document.getElementById('btn-'+t)?.classList.add('active-tool');
+        };
+        window.buyV = (t) => buyVehicle(t);
+
+        init();
+    </script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;700&display=swap');
+        body { margin: 0; overflow: hidden; background: #020617; font-family: 'Outfit', sans-serif; color: white; }
+        .glass { background: rgba(15, 23, 42, 0.95); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.1); }
+        .tool-btn { 
+            width: 100%; padding: 12px; margin-bottom: 6px; border-radius: 12px; 
+            text-align: left; transition: 0.2s; color: #94a3b8; font-size: 13px;
+            display: flex; align-items: center; gap: 10px;
+        }
+        .tool-btn:hover { background: rgba(255,255,255,0.05); color: white; }
+        .active-tool { background: #2563eb !important; color: white !important; box-shadow: 0 4px 15px rgba(37, 99, 235, 0.3); }
+        #sidebar { position: fixed; top: 20px; right: 20px; width: 320px; z-index: 100; max-height: 85vh; display: flex; flex-direction: column; overflow: hidden; }
+        #menu-content { overflow-y: auto; padding: 20px; }
+        #drag-handle { cursor: move; padding: 16px; border-bottom: 1px solid rgba(255,255,255,0.05); display: flex; justify-content: space-between; align-items: center; }
+        .money-badge { background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 14px 28px; border-radius: 24px; box-shadow: 0 10px 40px rgba(5, 150, 105, 0.2); }
+        #fee-feedback { position: fixed; top: 100px; left: 32px; color: #f87171; font-weight: bold; font-size: 14px; transition: 0.3s; opacity: 0; pointer-events: none; }
+        #status-msg { position: fixed; bottom: -100px; left: 50%; transform: translateX(-50%); background: #1e293b; padding: 12px 24px; border-radius: 40px; font-weight: bold; transition: bottom 0.5s; z-index: 500; border: 1px solid #3b82f6; }
+    </style>
+</head>
+<body>
+
+    <div id="lobby" class="fixed inset-0 z-[2000] flex items-center justify-center bg-slate-950 p-6">
+        <div class="glass p-12 rounded-[3.5rem] max-w-sm w-full text-center border-blue-500/30 shadow-2xl">
+            <h1 class="text-4xl font-bold text-white mb-2">AIRPORT <span class="text-blue-500 text-6xl block">ULTRA</span></h1>
+            <p class="text-slate-500 text-sm mb-12 tracking-[0.3em] uppercase">Professional ATC Simulator</p>
+            <input id="name-input" type="text" class="w-full bg-slate-900 border border-slate-800 rounded-2xl p-5 text-white mb-8 outline-none" placeholder="Código de Aeropuerto">
+            <button id="start-btn" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-6 rounded-2xl transition-all">
+                ASUMIR EL MANDO
+            </button>
+        </div>
+    </div>
+
+    <div id="game-ui" style="display: none;">
+        <div id="header-ui" class="fixed top-8 left-8 z-50">
+            <div class="money-badge flex flex-col text-white">
+                <span class="text-[10px] font-bold opacity-70 uppercase tracking-widest mb-1">Tesorería General</span>
+                <span id="money-val" class="text-3xl font-bold">$80,000</span>
+            </div>
+            <div id="fee-feedback">-$35 (ATC)</div>
+        </div>
+
+        <div id="status-msg">Comando Manual</div>
+
+        <div id="sidebar" class="glass rounded-[2.5rem] shadow-2xl">
+            <div id="drag-handle" class="text-white">
+                <span class="text-[11px] font-bold uppercase tracking-widest flex items-center gap-3">
+                    <span class="w-2 h-2 rounded-full bg-blue-500 animate-ping"></span> LOGÍSTICA
+                </span>
+                <button id="toggle-btn" onclick="toggleMenu()" class="w-8 h-8 flex items-center justify-center bg-white/5 rounded-lg">−</button>
+            </div>
+
+            <div id="menu-content">
+                <div class="mb-6">
+                    <p class="text-slate-500 text-[9px] font-bold uppercase mb-3 tracking-widest">General</p>
+                    <button id="btn-select" onclick="setTool('select')" class="tool-btn active-tool"><span>🖱️</span> Navegar / Seleccionar</button>
+                    <button id="btn-grass" onclick="setTool('grass')" class="tool-btn"><span>🌱</span> Demoler</button>
+                </div>
+
+                <div class="mb-6">
+                    <p class="text-blue-400 text-[9px] font-bold uppercase mb-3 tracking-widest">Infraestructura</p>
+                    <button id="btn-runway" onclick="setTool('runway')" class="tool-btn"><span>🛤️</span> Pista Landing ($2k)</button>
+                    <button id="btn-road" onclick="setTool('road')" class="tool-btn"><span>🛣️</span> Calle de Rodaje ($600)</button>
+                    <button id="btn-platform" onclick="setTool('platform')" class="tool-btn"><span>🏗️</span> Puerta Embarque ($2.5k)</button>
+                    <button id="btn-terminal" onclick="setTool('terminal')" class="tool-btn"><span>🏢</span> Terminal Int. ($15k)</button>
+                    <button id="btn-hangar" onclick="setTool('hangar')" class="tool-btn"><span>🏠</span> Hangar ($18k)</button>
+                    <button id="btn-office" onclick="setTool('office')" class="tool-btn"><span>📡</span> Torre Control ($6k)</button>
+                </div>
+
+                <div class="mb-6">
+                    <p class="text-yellow-500 text-[9px] font-bold uppercase mb-3 tracking-widest">Unidades</p>
+                    <button onclick="buyV('bus')" class="tool-btn bg-slate-800/50"><span>🚌</span> Bus Pasajeros ($4k)</button>
+                    <button onclick="buyV('tractor')" class="tool-btn bg-slate-800/50"><span>🚜</span> Tractor Equipaje ($3k)</button>
+                    <button onclick="buyV('fuel_truck')" class="tool-btn bg-slate-800/50"><span>🚛</span> Camión Combustible ($5k)</button>
+                    <button onclick="buyV('mechanic_truck')" class="tool-btn bg-slate-800/50"><span>🔧</span> Unidad Mecánica ($4.5k)</button>
+                </div>
+
+                <div class="p-4 bg-blue-500/10 rounded-2xl border border-blue-500/20">
+                    <p class="text-[10px] text-blue-300 font-bold mb-2">CONTROL LOGÍSTICO:</p>
+                    <p class="text-[9px] text-slate-400 leading-relaxed">
+                        • Los vehículos **solo pueden circular por calles**. Haz clic en un vehículo y luego en una calle para moverlo.<br>
+                        • Las líneas amarillas se curvan automáticamente en las esquinas.<br>
+                        • Los aviones mantienen distancia para no amontonarse.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</body>
+</html>
+
