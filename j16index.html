@@ -1,0 +1,1688 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Airport Tycoon Ultra - Isometric Curves Edition</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;700&display=swap');
+        body { 
+            margin: 0; 
+            overflow: hidden; 
+            background: #020617; 
+            font-family: 'Outfit', sans-serif; 
+            color: white; 
+            cursor: default;
+            touch-action: none;
+        }
+        .glass { 
+            background: rgba(15, 23, 42, 0.95); 
+            backdrop-filter: blur(10px); 
+            border: 1px solid rgba(255,255,255,0.1); 
+        }
+        .tool-btn { 
+            width: 100%; 
+            padding: 12px; 
+            margin-bottom: 8px; 
+            border-radius: 10px; 
+            text-align: left; 
+            transition: 0.2s; 
+            color: #94a3b8; 
+            font-size: 14px; 
+            display: flex; 
+            align-items: center; 
+            gap: 12px; 
+            cursor: pointer;
+        }
+        .active-tool { 
+            background: #3b82f6 !important; 
+            color: white !important; 
+        }
+        #sidebar { 
+            position: fixed; 
+            top: 20px; 
+            right: 20px; 
+            width: 300px; 
+            z-index: 100; 
+            max-height: 85vh; 
+            display: flex; 
+            flex-direction: column; 
+            overflow: hidden; 
+        }
+        #drag-handle { 
+            cursor: move; 
+            padding: 15px; 
+            border-bottom: 1px solid rgba(255,255,255,0.1); 
+            font-weight: bold; 
+            background: rgba(255,255,255,0.1); 
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 16px;
+        }
+        .money-badge { 
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%); 
+            padding: 16px 32px; 
+            border-radius: 20px; 
+        }
+        #notif { 
+            position: fixed; 
+            bottom: 40px; 
+            left: 50%; 
+            transform: translateX(-50%); 
+            background: #1e293b; 
+            padding: 12px 28px; 
+            border-radius: 40px; 
+            opacity: 0; 
+            transition: 0.4s; 
+            border: 1px solid #3b82f6; 
+            z-index: 1000; 
+            font-size: 14px;
+            max-width: 90%;
+            text-align: center;
+        }
+        #fee-feedback { 
+            position: fixed; 
+            top: 100px; 
+            left: 32px; 
+            color: #f87171; 
+            font-weight: bold; 
+            font-size: 14px; 
+            transition: 0.4s; 
+            opacity: 0; 
+            pointer-events: none; 
+        }
+        
+        /* Ventana Shop - Responsive */
+        #shop-window {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 90%;
+            max-width: 800px;
+            height: 90%;
+            max-height: 700px;
+            background: rgba(15, 23, 42, 0.98);
+            border-radius: 20px;
+            border: 2px solid #3b82f6;
+            z-index: 2000;
+            display: none;
+            overflow: hidden;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        }
+        
+        @media (max-width: 768px) {
+            #shop-window {
+                width: 95%;
+                height: 95%;
+                border-radius: 15px;
+            }
+            
+            .shop-item-image {
+                width: 70px !important;
+                height: 70px !important;
+            }
+            
+            .shop-item-header h4 {
+                font-size: 16px !important;
+            }
+        }
+        
+        .shop-header {
+            background: rgba(59, 130, 246, 0.2);
+            padding: 20px;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .shop-controls {
+            display: flex;
+            gap: 12px;
+        }
+        
+        .shop-control-btn {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            background: rgba(255,255,255,0.1);
+            transition: 0.2s;
+            font-size: 16px;
+        }
+        
+        .shop-control-btn:hover {
+            background: rgba(255,255,255,0.2);
+        }
+        
+        .shop-content {
+            padding: 20px;
+            height: calc(100% - 80px);
+            overflow-y: auto;
+        }
+        
+        .shop-section-title {
+            font-size: 16px;
+            font-weight: bold;
+            color: #60a5fa;
+            margin: 20px 0 15px 0;
+            padding-bottom: 8px;
+            border-bottom: 2px solid rgba(96, 165, 250, 0.3);
+        }
+        
+        .shop-item {
+            background: rgba(30, 41, 59, 0.5);
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 20px;
+            border: 1px solid rgba(255,255,255,0.05);
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .shop-item-header {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            margin-bottom: 15px;
+        }
+        
+        .shop-item-image {
+            width: 80px;
+            height: 80px;
+            background: rgba(0,0,0,0.3);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 40px;
+            flex-shrink: 0;
+        }
+        
+        .shop-item-image img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+        
+        .stats-bar {
+            height: 8px;
+            border-radius: 4px;
+            margin: 8px 0;
+            overflow: hidden;
+            background: rgba(255,255,255,0.1);
+        }
+        
+        .stats-fill {
+            height: 100%;
+            border-radius: 4px;
+        }
+        
+        /* Botón Shop */
+        #shop-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: #3b82f6;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 70px;
+            height: 70px;
+            font-size: 28px;
+            cursor: pointer;
+            z-index: 100;
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+            transition: 0.3s;
+        }
+        
+        @media (max-width: 768px) {
+            #shop-btn {
+                width: 60px;
+                height: 60px;
+                font-size: 24px;
+                bottom: 15px;
+                right: 15px;
+            }
+        }
+        
+        #shop-btn:hover {
+            background: #2563eb;
+            transform: scale(1.05);
+        }
+        
+        /* Minimized shop */
+        #shop-minimized {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(15, 23, 42, 0.9);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 12px;
+            padding: 12px 24px;
+            z-index: 100;
+            display: none;
+            cursor: pointer;
+            backdrop-filter: blur(10px);
+            font-size: 14px;
+        }
+        
+        /* Time controls */
+        #time-controls {
+            position: fixed;
+            top: 20px;
+            right: 340px;
+            background: rgba(15, 23, 42, 0.9);
+            border-radius: 12px;
+            padding: 12px 18px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        
+        @media (max-width: 768px) {
+            #time-controls {
+                top: 10px;
+                right: 10px;
+                padding: 10px 15px;
+                gap: 8px;
+            }
+        }
+        
+        #time-display {
+            font-size: 15px;
+            font-weight: bold;
+            min-width: 90px;
+        }
+        
+        .time-speed-controls {
+            display: flex;
+            gap: 5px;
+        }
+        
+        .time-speed-btn {
+            background: rgba(59, 130, 246, 0.3);
+            border: 1px solid #3b82f6;
+            color: white;
+            padding: 5px 10px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: 0.2s;
+            min-width: 35px;
+            text-align: center;
+        }
+        
+        .time-speed-btn:hover {
+            background: rgba(59, 130, 246, 0.5);
+        }
+        
+        .time-speed-btn.active {
+            background: #3b82f6;
+        }
+        
+        /* Day/Night indicator */
+        #day-night-indicator {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            flex-shrink: 0;
+        }
+        
+        .day-mode {
+            background: #fbbf24;
+            color: #92400e;
+        }
+        
+        .night-mode {
+            background: #1e40af;
+            color: #dbeafe;
+        }
+        
+        /* Grid selection */
+        .grid-highlight {
+            position: absolute;
+            pointer-events: none;
+            z-index: 50;
+        }
+        
+        /* Building controls */
+        #building-controls {
+            position: fixed;
+            bottom: 100px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(15, 23, 42, 0.9);
+            border-radius: 15px;
+            padding: 15px;
+            display: none;
+            gap: 10px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.1);
+            z-index: 150;
+        }
+        
+        .building-control-btn {
+            background: rgba(59, 130, 246, 0.3);
+            border: 1px solid #3b82f6;
+            color: white;
+            padding: 10px 15px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .building-control-btn:hover {
+            background: rgba(59, 130, 246, 0.5);
+        }
+        
+        /* Plane controls */
+        #plane-controls {
+            position: fixed;
+            bottom: 100px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(15, 23, 42, 0.9);
+            border-radius: 15px;
+            padding: 15px;
+            display: none;
+            gap: 10px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.1);
+            z-index: 150;
+            flex-wrap: wrap;
+            max-width: 90%;
+        }
+        
+        .plane-control-btn {
+            background: rgba(59, 130, 246, 0.3);
+            border: 1px solid #3b82f6;
+            color: white;
+            padding: 10px 15px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex: 1;
+            min-width: 120px;
+            justify-content: center;
+        }
+        
+        .plane-control-btn:hover {
+            background: rgba(59, 130, 246, 0.5);
+        }
+        
+        .plane-control-btn.disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        /* Plane Tasks Controls */
+        #plane-tasks-controls {
+            position: fixed;
+            bottom: 100px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(15, 23, 42, 0.95);
+            border-radius: 15px;
+            padding: 20px;
+            display: none;
+            gap: 12px;
+            backdrop-filter: blur(10px);
+            border: 2px solid #3b82f6;
+            z-index: 160;
+            flex-wrap: wrap;
+            max-width: 90%;
+            min-width: 300px;
+        }
+        
+        .plane-task-btn {
+            background: rgba(59, 130, 246, 0.3);
+            border: 1px solid #3b82f6;
+            color: white;
+            padding: 12px 18px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex: 1;
+            min-width: 140px;
+            justify-content: center;
+        }
+        
+        .plane-task-btn:hover {
+            background: rgba(59, 130, 246, 0.5);
+        }
+        
+        .plane-task-btn.disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .task-cost {
+            font-size: 12px;
+            color: #fbbf24;
+            margin-left: auto;
+        }
+        
+        /* Game controls */
+        #game-controls {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            display: flex;
+            gap: 10px;
+            z-index: 100;
+        }
+        
+        .game-control-btn {
+            background: rgba(15, 23, 42, 0.9);
+            border: 1px solid rgba(255,255,255,0.1);
+            color: white;
+            padding: 10px 15px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            backdrop-filter: blur(10px);
+        }
+        
+        .game-control-btn:hover {
+            background: rgba(59, 130, 246, 0.3);
+            border-color: #3b82f6;
+        }
+        
+        /* Confirm dialog */
+        #confirm-dialog {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(15, 23, 42, 0.98);
+            border-radius: 20px;
+            border: 2px solid #3b82f6;
+            padding: 30px;
+            z-index: 3000;
+            display: none;
+            min-width: 300px;
+            text-align: center;
+        }
+        
+        .confirm-buttons {
+            display: flex;
+            gap: 15px;
+            margin-top: 20px;
+            justify-content: center;
+        }
+        
+        .confirm-btn {
+            padding: 10px 25px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: 0.2s;
+            border: none;
+        }
+        
+        .confirm-yes {
+            background: #ef4444;
+            color: white;
+        }
+        
+        .confirm-yes:hover {
+            background: #dc2626;
+        }
+        
+        .confirm-no {
+            background: #3b82f6;
+            color: white;
+        }
+        
+        .confirm-no:hover {
+            background: #2563eb;
+        }
+        
+        /* Mobile optimizations */
+        @media (max-width: 768px) {
+            #sidebar {
+                width: 280px;
+                right: 10px;
+                top: 10px;
+            }
+            
+            .money-badge {
+                padding: 12px 24px;
+            }
+            
+            #time-controls {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 5px;
+            }
+            
+            .time-speed-controls {
+                width: 100%;
+                justify-content: space-between;
+            }
+            
+            .time-speed-btn {
+                flex: 1;
+                padding: 8px 5px;
+            }
+            
+            #game-controls {
+                top: 10px;
+                left: 10px;
+                flex-direction: column;
+            }
+            
+            .plane-control-btn, .plane-task-btn {
+                min-width: 100px;
+                font-size: 13px;
+                padding: 8px 12px;
+            }
+            
+            #plane-tasks-controls {
+                padding: 15px;
+                min-width: 250px;
+            }
+        }
+        
+        /* Scrollbar styling */
+        .shop-content::-webkit-scrollbar {
+            width: 8px;
+        }
+        
+        .shop-content::-webkit-scrollbar-track {
+            background: rgba(255,255,255,0.05);
+            border-radius: 4px;
+        }
+        
+        .shop-content::-webkit-scrollbar-thumb {
+            background: #3b82f6;
+            border-radius: 4px;
+        }
+        
+        .shop-content::-webkit-scrollbar-thumb:hover {
+            background: #2563eb;
+        }
+        
+        /* Grid selection overlay */
+        .grid-selection {
+            position: absolute;
+            background: rgba(59, 130, 246, 0.3);
+            border: 2px solid #3b82f6;
+            pointer-events: none;
+            z-index: 49;
+        }
+        
+        /* Back button */
+        #back-btn {
+            position: fixed;
+            bottom: 100px;
+            left: 20px;
+            background: rgba(15, 23, 42, 0.9);
+            border: 1px solid rgba(255,255,255,0.1);
+            color: white;
+            padding: 12px 20px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            backdrop-filter: blur(10px);
+            z-index: 100;
+        }
+        
+        #back-btn:hover {
+            background: rgba(59, 130, 246, 0.3);
+            border-color: #3b82f6;
+        }
+        
+        /* Belt loader indicator */
+        .belt-loader {
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            background: #fbbf24;
+            border-radius: 50%;
+            z-index: 50;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="lobby" class="fixed inset-0 z-[2000] flex items-center justify-center bg-slate-950 p-6">
+        <div class="glass p-12 rounded-[3rem] max-w-sm w-full text-center border-blue-500/30">
+            <h1 class="text-4xl font-bold text-white mb-2">AIRPORT <span class="text-blue-500">PRO</span></h1>
+            <p class="text-slate-500 text-sm mb-10 tracking-widest uppercase">Isometric 45° - Smart Roads</p>
+            <button id="start-btn" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-5 rounded-2xl shadow-2xl transition-all">INICIAR OPERACIONES</button>
+        </div>
+    </div>
+
+    <!-- Confirm Dialog -->
+    <div id="confirm-dialog" class="glass">
+        <h3 class="text-xl font-bold mb-4" id="confirm-title">¿Confirmar Restart?</h3>
+        <p id="confirm-message">¿Estás seguro de que quieres reiniciar el juego? Se perderá todo el progreso.</p>
+        <div class="confirm-buttons">
+            <button class="confirm-btn confirm-yes" onclick="confirmRestart()">SÍ, REINICIAR</button>
+            <button class="confirm-btn confirm-no" onclick="closeConfirmDialog()">CANCELAR</button>
+        </div>
+    </div>
+
+    <div id="game-ui" style="display: none;">
+        <div id="header-ui" class="fixed top-8 left-8 z-50">
+            <div class="money-badge flex flex-col">
+                <span class="text-[10px] font-bold opacity-70 uppercase mb-1">Tesorería</span>
+                <span id="money-val" class="text-3xl font-bold">$100,000</span>
+            </div>
+            <div id="fee-feedback">-$100 (Mant.)</div>
+        </div>
+        
+        <div id="time-controls">
+            <div id="day-night-indicator" class="day-mode">☀️</div>
+            <div id="time-display">Día 1 - 06:00</div>
+            <div class="time-speed-controls">
+                <button class="time-speed-btn" onclick="setTimeSpeed(1)">1x</button>
+                <button class="time-speed-btn" onclick="setTimeSpeed(2)">2x</button>
+                <button class="time-speed-btn" onclick="setTimeSpeed(5)">5x</button>
+                <button class="time-speed-btn" onclick="setTimeSpeed(10)">10x</button>
+            </div>
+        </div>
+        
+        <div id="game-controls">
+            <button class="game-control-btn" onclick="showRestartConfirmation()">
+                🔄 Restart
+            </button>
+            <button class="game-control-btn" onclick="undoLastAction()">
+                ↩️ Deshacer
+            </button>
+        </div>
+        
+        <div id="notif">Seleccionado</div>
+        
+        <button id="shop-btn" onclick="openShop()">🛒</button>
+        
+        <div id="shop-minimized" onclick="openShop()">
+            🛒 Tienda Minimizada
+        </div>
+        
+        <button id="back-btn" onclick="deselectAll()">
+            ← Volver
+        </button>
+        
+        <!-- Building Controls -->
+        <div id="building-controls">
+            <button class="building-control-btn" onclick="rotateBuilding(90)">↻ 90°</button>
+            <button class="building-control-btn" onclick="rotateBuilding(-90)">↺ 90°</button>
+            <button class="building-control-btn" onclick="moveBuildingUp()">↑ Subir</button>
+            <button class="building-control-btn" onclick="moveBuildingDown()">↓ Bajar</button>
+            <button class="building-control-btn" onclick="moveBuildingLeft()">← Izquierda</button>
+            <button class="building-control-btn" onclick="moveBuildingRight()">→ Derecha</button>
+            <button class="building-control-btn" onclick="confirmBuildingMove()">✅ Confirmar</button>
+            <button class="building-control-btn" onclick="cancelBuildingMove()">❌ Cancelar</button>
+        </div>
+        
+        <!-- Plane Controls -->
+        <div id="plane-controls">
+            <button class="plane-control-btn" onclick="initiateTakeoff()" id="takeoff-btn">
+                ✈️ Despegar
+            </button>
+            <button class="plane-control-btn" onclick="movePlaneToRunway()" id="runway-btn">
+                🛬 Mover a Pista
+            </button>
+            <button class="plane-control-btn" onclick="movePlaneToParking()" id="parking-btn">
+                🅿️ Estacionar
+            </button>
+            <button class="plane-control-btn" onclick="showPlaneTasks()" id="tasks-btn">
+                🛠️ Tareas
+            </button>
+            <button class="plane-control-btn" onclick="deselectAll()" id="cancel-btn">
+                ❌ Cancelar
+            </button>
+        </div>
+        
+        <!-- Plane Tasks Controls -->
+        <div id="plane-tasks-controls">
+            <button class="plane-task-btn" onclick="unloadLuggage()" id="unload-luggage-btn">
+                🧳 Bajar Valijas
+                <span class="task-cost" id="unload-luggage-cost">$300</span>
+            </button>
+            <button class="plane-task-btn" onclick="unloadPassengers()" id="unload-passengers-btn">
+                👥 Bajar Pasajeros
+                <span class="task-cost" id="unload-passengers-cost">$500</span>
+            </button>
+            <button class="plane-task-btn" onclick="refuelPlaneTask()" id="refuel-task-btn">
+                ⛽ Cargar Combustible
+                <span class="task-cost" id="refuel-task-cost">$800</span>
+            </button>
+            <button class="plane-task-btn" onclick="chargeBattery()" id="charge-battery-btn">
+                🔋 Cargar Batería
+                <span class="task-cost" id="charge-battery-cost">$400</span>
+            </button>
+            <button class="plane-task-btn" onclick="performMaintenance()" id="maintenance-task-btn">
+                🔧 Realizar Mantenimiento
+                <span class="task-cost" id="maintenance-task-cost">$600</span>
+            </button>
+            <button class="plane-task-btn" onclick="hidePlaneTasks()" id="close-tasks-btn">
+                ❌ Cerrar
+            </button>
+        </div>
+        
+        <!-- Ventana del Shop -->
+        <div id="shop-window" class="glass">
+            <div class="shop-header">
+                <h3 class="font-bold text-lg">🛒 TIENDA DEL AEROPUERTO</h3>
+                <div class="shop-controls">
+                    <div class="shop-control-btn" onclick="minimizeShop()">_</div>
+                    <div class="shop-control-btn" onclick="closeShop()">✕</div>
+                </div>
+            </div>
+            <div class="shop-content">
+                
+                <div class="shop-section-title">✈️ AERONAVES</div>
+                
+                <div class="shop-item">
+                    <div class="shop-item-header">
+                        <div class="shop-item-image">
+                            <img src="avion.png" alt="Avión" onerror="this.style.display='none'; this.parentElement.innerHTML='✈️';">
+                        </div>
+                        <div>
+                            <h4 class="font-bold text-blue-400 mb-1 text-lg">✈️ AVIÓN COMERCIAL</h4>
+                            <p class="text-sm text-slate-400">Vuelos regulares - genera ingresos</p>
+                        </div>
+                    </div>
+                    <p class="text-yellow-400 font-bold mb-3 text-lg">Precio: $25,000</p>
+                    <div class="text-sm text-slate-500 mb-1">Estadísticas:</div>
+                    <div class="text-sm mb-1">⚡ Energía: <span class="text-yellow-400">12 horas</span></div>
+                    <div class="stats-bar"><div class="stats-fill bg-yellow-500" style="width: 100%"></div></div>
+                    <div class="text-sm mb-1">⛽ Combustible: <span class="text-red-400">8 horas</span></div>
+                    <div class="stats-bar"><div class="stats-fill bg-red-500" style="width: 100%"></div></div>
+                    <div class="text-sm mb-1">🔧 Mantenimiento: <span class="text-green-400">5 días</span></div>
+                    <div class="stats-bar"><div class="stats-fill bg-green-500" style="width: 100%"></div></div>
+                    <button onclick="buyVehicleFromShop('avion')" class="w-full mt-3 bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg transition text-lg font-bold">COMPRAR</button>
+                </div>
+                
+                <div class="shop-item">
+                    <div class="shop-item-header">
+                        <div class="shop-item-image">
+                            <img src="aerolineas.png" alt="Aerolíneas" onerror="this.style.display='none'; this.parentElement.innerHTML='✈️';">
+                        </div>
+                        <div>
+                            <h4 class="font-bold text-blue-400 mb-1 text-lg">✈️ AVIÓN AEROLÍNEAS</h4>
+                            <p class="text-sm text-slate-400">Vuelos internacionales - mayores ingresos</p>
+                        </div>
+                    </div>
+                    <p class="text-yellow-400 font-bold mb-3 text-lg">Precio: $35,000</p>
+                    <div class="text-sm text-slate-500 mb-1">Estadísticas:</div>
+                    <div class="text-sm mb-1">⚡ Energía: <span class="text-yellow-400">12 horas</span></div>
+                    <div class="stats-bar"><div class="stats-fill bg-yellow-500" style="width: 100%"></div></div>
+                    <div class="text-sm mb-1">⛽ Combustible: <span class="text-red-400">8 horas</span></div>
+                    <div class="stats-bar"><div class="stats-fill bg-red-500" style="width: 100%"></div></div>
+                    <div class="text-sm mb-1">🔧 Mantenimiento: <span class="text-green-400">5 días</span></div>
+                    <div class="stats-bar"><div class="stats-fill bg-green-500" style="width: 100%"></div></div>
+                    <button onclick="buyVehicleFromShop('aerolineas')" class="w-full mt-3 bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg transition text-lg font-bold">COMPRAR</button>
+                </div>
+                
+                <div class="shop-item">
+                    <div class="shop-item-header">
+                        <div class="shop-item-image">
+                            <img src="flybondi.png" alt="Flybondi" onerror="this.style.display='none'; this.parentElement.innerHTML='✈️';">
+                        </div>
+                        <div>
+                            <h4 class="font-bold text-blue-400 mb-1 text-lg">✈️ AVIÓN FLYBONDI</h4>
+                            <p class="text-sm text-slate-400">Low cost - vuelos frecuentes</p>
+                        </div>
+                    </div>
+                    <p class="text-yellow-400 font-bold mb-3 text-lg">Precio: $30,000</p>
+                    <div class="text-sm text-slate-500 mb-1">Estadísticas:</div>
+                    <div class="text-sm mb-1">⚡ Energía: <span class="text-yellow-400">12 horas</span></div>
+                    <div class="stats-bar"><div class="stats-fill bg-yellow-500" style="width: 100%"></div></div>
+                    <div class="text-sm mb-1">⛽ Combustible: <span class="text-red-400">8 horas</span></div>
+                    <div class="stats-bar"><div class="stats-fill bg-red-500" style="width: 100%"></div></div>
+                    <div class="text-sm mb-1">🔧 Mantenimiento: <span class="text-green-400">5 días</span></div>
+                    <div class="stats-bar"><div class="stats-fill bg-green-500" style="width: 100%"></div></div>
+                    <button onclick="buyVehicleFromShop('flybondi')" class="w-full mt-3 bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg transition text-lg font-bold">COMPRAR</button>
+                </div>
+                
+                <div class="shop-section-title">🚗 VEHÍCULOS TERRESTRES</div>
+                
+                <div class="shop-item">
+                    <div class="shop-item-header">
+                        <div class="shop-item-image">
+                            <img src="bus.png" alt="Bus" onerror="this.style.display='none'; this.parentElement.innerHTML='🚌';">
+                        </div>
+                        <div>
+                            <h4 class="font-bold text-blue-400 mb-1 text-lg">🚌 BUS DE PASAJEROS</h4>
+                            <p class="text-sm text-slate-400">Transporte entre terminales</p>
+                        </div>
+                    </div>
+                    <p class="text-yellow-400 font-bold mb-3 text-lg">Precio: $4,000</p>
+                    <div class="text-sm text-slate-500 mb-1">Estadísticas:</div>
+                    <div class="text-sm mb-1">⛽ Combustible: <span class="text-red-400">24 horas</span></div>
+                    <div class="stats-bar"><div class="stats-fill bg-red-500" style="width: 100%"></div></div>
+                    <div class="text-sm mb-1">🔧 Mantenimiento: <span class="text-green-400">1 mes</span></div>
+                    <div class="stats-bar"><div class="stats-fill bg-green-500" style="width: 100%"></div></div>
+                    <button onclick="buyVehicleFromShop('bus')" class="w-full mt-3 bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg transition text-lg font-bold">COMPRAR</button>
+                </div>
+                
+                <div class="shop-item">
+                    <div class="shop-item-header">
+                        <div class="shop-item-image">
+                            <img src="movil.png" alt="Móvil Maletero" onerror="this.style.display='none'; this.parentElement.innerHTML='🚚';">
+                        </div>
+                        <div>
+                            <h4 class="font-bold text-blue-400 mb-1 text-lg">🚚 MÓVIL MALETERO</h4>
+                            <p class="text-sm text-slate-400">Transporte de equipaje</p>
+                        </div>
+                    </div>
+                    <p class="text-yellow-400 font-bold mb-3 text-lg">Precio: $5,000</p>
+                    <div class="text-sm text-slate-500 mb-1">Estadísticas:</div>
+                    <div class="text-sm mb-1">⛽ Combustible: <span class="text-red-400">24 horas</span></div>
+                    <div class="stats-bar"><div class="stats-fill bg-red-500" style="width: 100%"></div></div>
+                    <div class="text-sm mb-1">🔧 Mantenimiento: <span class="text-green-400">1 mes</span></div>
+                    <div class="stats-bar"><div class="stats-fill bg-green-500" style="width: 100%"></div></div>
+                    <button onclick="buyVehicleFromShop('movil')" class="w-full mt-3 bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg transition text-lg font-bold">COMPRAR</button>
+                </div>
+                
+                <div class="shop-item">
+                    <div class="shop-item-header">
+                        <div class="shop-item-image">
+                            <img src="movilmecanico.png" alt="Móvil Mecánico" onerror="this.style.display='none'; this.parentElement.innerHTML='🔧';">
+                        </div>
+                        <div>
+                            <h4 class="font-bold text-blue-400 mb-1 text-lg">🔧 MÓVIL MECÁNICO</h4>
+                            <p class="text-sm text-slate-400">Reparación de aeronaves</p>
+                        </div>
+                    </div>
+                    <p class="text-yellow-400 font-bold mb-3 text-lg">Precio: $8,000</p>
+                    <div class="text-sm text-slate-500 mb-1">Estadísticas:</div>
+                    <div class="text-sm mb-1">⛽ Combustible: <span class="text-red-400">24 horas</span></div>
+                    <div class="stats-bar"><div class="stats-fill bg-red-500" style="width: 100%"></div></div>
+                    <div class="text-sm mb-1">🔧 Mantenimiento: <span class="text-green-400">1 mes</span></div>
+                    <div class="stats-bar"><div class="stats-fill bg-green-500" style="width: 100%"></div></div>
+                    <button onclick="buyVehicleFromShop('movilmecanico')" class="w-full mt-3 bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg transition text-lg font-bold">COMPRAR</button>
+                </div>
+                
+                <div class="shop-item">
+                    <div class="shop-item-header">
+                        <div class="shop-item-image">
+                            <img src="gpu.png" alt="GPU" onerror="this.style.display='none'; this.parentElement.innerHTML='🔌';">
+                        </div>
+                        <div>
+                            <h4 class="font-bold text-blue-400 mb-1 text-lg">🔌 GPU (GROUND POWER UNIT)</h4>
+                            <p class="text-sm text-slate-400">Suministro eléctrico para aviones</p>
+                        </div>
+                    </div>
+                    <p class="text-yellow-400 font-bold mb-3 text-lg">Precio: $6,000</p>
+                    <div class="text-sm text-slate-500 mb-1">Estadísticas:</div>
+                    <div class="text-sm mb-1">⛽ Combustible: <span class="text-red-400">24 horas</span></div>
+                    <div class="stats-bar"><div class="stats-fill bg-red-500" style="width: 100%"></div></div>
+                    <div class="text-sm mb-1">🔧 Mantenimiento: <span class="text-green-400">1 mes</span></div>
+                    <div class="stats-bar"><div class="stats-fill bg-green-500" style="width: 100%"></div></div>
+                    <button onclick="buyVehicleFromShop('gpu')" class="w-full mt-3 bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg transition text-lg font-bold">COMPRAR</button>
+                </div>
+                
+                <div class="shop-item">
+                    <div class="shop-item-header">
+                        <div class="shop-item-image">
+                            <img src="cinta.png" alt="Cinta de Carga" onerror="this.style.display='none'; this.parentElement.innerHTML='🔋';">
+                        </div>
+                        <div>
+                            <h4 class="font-bold text-blue-400 mb-1 text-lg">🔋 CINTA DE CARGA</h4>
+                            <p class="text-sm text-slate-400">Para bajar valijas del avión</p>
+                        </div>
+                    </div>
+                    <p class="text-yellow-400 font-bold mb-3 text-lg">Precio: $3,500</p>
+                    <div class="text-sm text-slate-500 mb-1">Estadísticas:</div>
+                    <div class="text-sm mb-1">⛽ Combustible: <span class="text-red-400">24 horas</span></div>
+                    <div class="stats-bar"><div class="stats-fill bg-red-500" style="width: 100%"></div></div>
+                    <div class="text-sm mb-1">🔧 Mantenimiento: <span class="text-green-400">1 mes</span></div>
+                    <div class="stats-bar"><div class="stats-fill bg-green-500" style="width: 100%"></div></div>
+                    <button onclick="buyVehicleFromShop('cinta')" class="w-full mt-3 bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg transition text-lg font-bold">COMPRAR</button>
+                </div>
+                
+                <div class="shop-section-title">🏗️ EDIFICIOS</div>
+                
+                <div class="shop-item">
+                    <div class="shop-item-header">
+                        <div class="shop-item-image">
+                            <img src="estacioncombustible.png" alt="Estación de Servicio" onerror="this.style.display='none'; this.parentElement.innerHTML='⛽';">
+                        </div>
+                        <div>
+                            <h4 class="font-bold text-blue-400 mb-1 text-lg">⛽ ESTACIÓN DE SERVICIO</h4>
+                            <p class="text-sm text-slate-400">Abastecimiento de combustible</p>
+                        </div>
+                    </div>
+                    <p class="text-yellow-400 font-bold mb-3 text-lg">Precio: $15,000</p>
+                    <div class="text-sm text-slate-500 mb-1">Estadísticas:</div>
+                    <div class="text-sm mb-1">⛽ Combustible: <span class="text-red-400">12 horas</span></div>
+                    <div class="stats-bar"><div class="stats-fill bg-red-500" style="width: 100%"></div></div>
+                    <div class="text-sm mb-1">💰 Gasto Combustible: <span class="text-yellow-400">$2,000/12h</span></div>
+                    <div class="stats-bar"><div class="stats-fill bg-yellow-500" style="width: 100%"></div></div>
+                    <div class="text-sm mb-1">👷 Empleados/Insumos: <span class="text-green-400">$3,000/mes</span></div>
+                    <div class="stats-bar"><div class="stats-fill bg-green-500" style="width: 100%"></div></div>
+                    <button onclick="buyBuildingFromShop('estacioncombustible')" class="w-full mt-3 bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg transition text-lg font-bold">COMPRAR</button>
+                </div>
+                
+                <div class="shop-item">
+                    <div class="shop-item-header">
+                        <div class="shop-item-image">
+                            <img src="cuartel.png" alt="Cuartel de Bomberos" onerror="this.style.display='none'; this.parentElement.innerHTML='🚒';">
+                        </div>
+                        <div>
+                            <h4 class="font-bold text-blue-400 mb-1 text-lg">🚒 CUARTEL DE BOMBEROS</h4>
+                            <p class="text-sm text-slate-400">Protección contra incendios</p>
+                        </div>
+                    </div>
+                    <p class="text-yellow-400 font-bold mb-3 text-lg">Precio: $20,000</p>
+                    <div class="text-sm text-slate-500 mb-1">Estadísticas:</div>
+                    <div class="text-sm mb-1">💧 Agua: <span class="text-blue-400">100L (50L/min)</span></div>
+                    <div class="stats-bar"><div class="stats-fill bg-blue-500" style="width: 100%"></div></div>
+                    <div class="text-sm mb-1">👷 Empleados/Insumos: <span class="text-green-400">$3,000/mes</span></div>
+                    <div class="stats-bar"><div class="stats-fill bg-green-500" style="width: 100%"></div></div>
+                    <button onclick="buyBuildingFromShop('cuartel')" class="w-full mt-3 bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg transition text-lg font-bold">COMPRAR</button>
+                </div>
+                
+            </div>
+        </div>
+        
+        <div id="sidebar" class="glass rounded-3xl shadow-2xl">
+            <div id="drag-handle">
+                <span>🏗️ Gestión Isométrica</span>
+            </div>
+            <div id="menu-content" class="p-5 overflow-y-auto">
+                <p class="text-slate-500 text-[9px] font-bold uppercase mb-2 tracking-widest">Navegación</p>
+                <button id="btn-select" onclick="setTool('select')" class="tool-btn active-tool"><span>🖱️</span> Mover / Seleccionar</button>
+                <button id="btn-grass" onclick="setTool('grass')" class="tool-btn"><span>🌱</span> Demoler (50%)</button>
+                <button id="btn-remove-lines" onclick="setTool('remove_lines')" class="tool-btn"><span>🧹</span> Borrar Líneas</button>
+                <p class="text-blue-400 text-[9px] font-bold uppercase mt-4 mb-2 tracking-widest">Obras</p>
+                <button id="btn-runway" onclick="setTool('runway')" class="tool-btn"><span>🛤️</span> Pista Landing ($2k)</button>
+                <button id="btn-road" onclick="setTool('road')" class="tool-btn"><span>🛣️</span> Calle Rodaje ($600)</button>
+                <button id="btn-platform" onclick="setTool('platform')" class="tool-btn"><span>🏗️</span> Plataforma Gris ($2.5k)</button>
+                <button id="btn-torre" onclick="setTool('torre')" class="tool-btn"><span>📡</span> Torre Control ($6k)</button>
+                <button id="btn-cemento" onclick="setTool('cemento')" class="tool-btn"><span>🏗️</span> Cemento Gris ($1.5k)</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-app.js";
+        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-auth.js";
+        import { getFirestore, doc, setDoc, onSnapshot, collection } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-firestore.js";
+
+        // --- Configuración Segura ---
+        let db = null;
+        let appId = 'airport-isometric-v2';
+
+        try {
+            if (typeof __firebase_config !== 'undefined') {
+                const firebaseConfig = JSON.parse(__firebase_config);
+                const app = initializeApp(firebaseConfig);
+                const auth = getAuth(app);
+                db = getFirestore(app);
+                signInAnonymously(auth);
+            }
+        } catch (e) { console.warn("Firebase offline mode."); }
+
+        // --- Estado Global ---
+        let scene, camera, renderer, raycaster, mouse, controls;
+        let gridMap = new Map(), airplanes = new Map(), localVehicles = [], buildings = [];
+        let currentTool = 'select', money = 100000;
+        let selectedEntity = null;
+        let selectedPlane = null;
+        let maintenanceTick = 0;
+        let gameTime = 0;
+        let gameDay = 1;
+        let gameHour = 6;
+        let gameMinute = 0;
+        let isDayTime = true;
+        let timeSpeed = 1;
+        let towerMaintenanceInterval = 86400;
+        let dayStartHour = 6;
+        let nightStartHour = 18;
+        let nightDuration = 8;
+        
+        let parkingPositions = [];
+        let occupiedParkingSpots = new Map();
+        let runwayOccupied = false;
+        let landingRunway = null;
+        let lastPlaneMaintenanceHour = gameHour;
+        
+        // Variables para selección de cuadrícula y movimiento de edificios
+        let selectedBuilding = null;
+        let isMovingBuilding = false;
+        let gridSelection = null;
+        let isGridSelectMode = false;
+        let selectedGridCells = new Set();
+        let buildingOriginalPosition = null;
+        let buildingRotation = 0;
+        
+        // Historial de acciones para deshacer
+        let actionHistory = [];
+        const MAX_HISTORY = 20;
+        
+        // Cinta de carga activa
+        let activeBeltLoader = null;
+        let beltLoaderAnimation = null;
+
+        const TILE_SIZE = 8;
+        const VIEW_RADIUS = 15;
+        const COLORS = {
+            grass: 0x14532d,
+            runway: 0x111111,
+            platform: 0x4b5563, 
+            road: 0x374151,
+            cemento: 0x6b7280
+        };
+
+        const PRICES = { 
+            runway: 2000, platform: 2500, road: 600, torre: 6000, 
+            terminal: 15000, bus: 4000, tractor: 3000, cinta: 3500, 
+            grass: 0, avion: 25000, aerolineas: 35000, flybondi: 30000,
+            movil: 5000, movilmecanico: 8000, gpu: 6000,
+            estacioncombustible: 15000, cuartel: 20000,
+            cemento: 1500,
+            remove_lines: 0
+        };
+        
+        // Costos de tareas del avión
+        const TASK_COSTS = {
+            unload_luggage: 300,
+            unload_passengers: 500,
+            refuel: 800,
+            charge_battery: 400,
+            maintenance: 600
+        };
+
+        const textureLoader = new THREE.TextureLoader();
+
+        // --- Sistema de Historial (Undo) ---
+        function saveActionToHistory(action) {
+            actionHistory.push(action);
+            if (actionHistory.length > MAX_HISTORY) {
+                actionHistory.shift();
+            }
+        }
+
+        function undoLastAction() {
+            if (actionHistory.length === 0) {
+                showNotification("No hay acciones para deshacer");
+                return;
+            }
+            
+            const lastAction = actionHistory.pop();
+            
+            switch (lastAction.type) {
+                case 'build':
+                    // Revertir construcción
+                    const tile = gridMap.get(`${lastAction.x},${lastAction.z}`);
+                    if (tile) {
+                        const refund = PRICES[lastAction.newType] * 0.5;
+                        if (refund > 0) {
+                            updateMoney(refund);
+                        }
+                        updateTileUI(lastAction.x, lastAction.z, lastAction.oldType);
+                        showNotification(`Deshecho: ${lastAction.newType} removido`);
+                    }
+                    break;
+                    
+                case 'demolish':
+                    // Revertir demolición
+                    updateTileUI(lastAction.x, lastAction.z, lastAction.oldType);
+                    updateMoney(-PRICES[lastAction.oldType] * 0.5);
+                    showNotification(`Deshecho: ${lastAction.oldType} restaurado`);
+                    break;
+                    
+                case 'plane_takeoff':
+                    // Revertir despegue (no se puede, solo notificación)
+                    showNotification("No se puede revertir despegue");
+                    break;
+                    
+                case 'plane_landing':
+                    // Revertir aterrizaje (no se puede, solo notificación)
+                    showNotification("No se puede revertir aterrizaje");
+                    break;
+                    
+                case 'plane_task':
+                    // Revertir tarea de avión
+                    if (lastAction.task === 'unload_luggage' || lastAction.task === 'unload_passengers') {
+                        showNotification(`No se puede revertir: ${lastAction.task}`);
+                    } else {
+                        updateMoney(TASK_COSTS[lastAction.task]);
+                        showNotification(`Deshecho: ${lastAction.task} revertido`);
+                    }
+                    break;
+            }
+            
+            saveGame();
+        }
+
+        // --- Cargar y guardar juego ---
+        function saveGame() {
+            const gameState = {
+                money: money,
+                gameDay: gameDay,
+                gameHour: gameHour,
+                gameMinute: gameMinute,
+                isDayTime: isDayTime,
+                timeSpeed: timeSpeed,
+                airplanes: Array.from(airplanes.entries()).map(([id, plane]) => ({
+                    id,
+                    data: plane.data,
+                    position: plane.mesh.position,
+                    rotation: plane.mesh.rotation
+                })),
+                localVehicles: localVehicles.map(vehicle => ({
+                    type: vehicle.type,
+                    position: vehicle.mesh.position,
+                    rotation: vehicle.mesh.rotation,
+                    stats: vehicle.stats
+                })),
+                buildings: buildings.map(building => ({
+                    type: building.type,
+                    position: building.mesh.position,
+                    rotation: building.mesh.rotation,
+                    stats: building.stats
+                })),
+                gridMap: Array.from(gridMap.entries()).map(([key, tile]) => ({
+                    key,
+                    type: tile.userData.type,
+                    position: tile.position,
+                    rotation: tile.rotation
+                })),
+                actionHistory: actionHistory
+            };
+            
+            try {
+                localStorage.setItem('airportTycoonSave', JSON.stringify(gameState));
+                console.log('Juego guardado en caché');
+            } catch (e) {
+                console.warn('No se pudo guardar el juego:', e);
+            }
+        }
+
+        function loadGame() {
+            try {
+                const saved = localStorage.getItem('airportTycoonSave');
+                if (saved) {
+                    const gameState = JSON.parse(saved);
+                    
+                    money = gameState.money || 100000;
+                    gameDay = gameState.gameDay || 1;
+                    gameHour = gameState.gameHour || 6;
+                    gameMinute = gameState.gameMinute || 0;
+                    isDayTime = gameState.isDayTime !== undefined ? gameState.isDayTime : true;
+                    timeSpeed = gameState.timeSpeed || 1;
+                    actionHistory = gameState.actionHistory || [];
+                    
+                    updateMoneyDisplay();
+                    updateTimeDisplay();
+                    updateTimeSpeedButtons();
+                    
+                    console.log('Juego cargado desde caché');
+                    return true;
+                }
+            } catch (e) {
+                console.warn('Error cargando juego:', e);
+            }
+            return false;
+        }
+
+        // --- Funciones del Shop ---
+        function openShop() {
+            document.getElementById('shop-window').style.display = 'block';
+            document.getElementById('shop-minimized').style.display = 'none';
+            document.getElementById('shop-btn').style.display = 'none';
+        }
+
+        function closeShop() {
+            document.getElementById('shop-window').style.display = 'none';
+            document.getElementById('shop-btn').style.display = 'block';
+            document.getElementById('shop-minimized').style.display = 'none';
+        }
+
+        function minimizeShop() {
+            document.getElementById('shop-window').style.display = 'none';
+            document.getElementById('shop-minimized').style.display = 'block';
+            document.getElementById('shop-btn').style.display = 'none';
+        }
+
+        function buyVehicleFromShop(type) {
+            if (money >= PRICES[type]) {
+                updateMoney(-PRICES[type]);
+                if (type === 'avion' || type === 'aerolineas' || type === 'flybondi') {
+                    spawnPlayerPlane(type);
+                } else {
+                    buyVehicle(type);
+                }
+                showNotification(`${type.toUpperCase()} comprado por $${PRICES[type]}`);
+                saveGame();
+                closeShop();
+            } else {
+                showNotification(`¡Dinero insuficiente! Necesitas $${PRICES[type]}`);
+            }
+        }
+
+        function buyBuildingFromShop(type) {
+            if (money >= PRICES[type]) {
+                updateMoney(-PRICES[type]);
+                placeBuilding(type);
+                showNotification(`${type.toUpperCase()} comprado por $${PRICES[type]}`);
+                saveGame();
+                closeShop();
+            } else {
+                showNotification(`¡Dinero insuficiente! Necesitas $${PRICES[type]}`);
+            }
+        }
+
+        // --- Sistema de Tiempo ---
+        function updateGameTime() {
+            gameMinute += timeSpeed;
+            
+            while (gameMinute >= 60) {
+                gameMinute -= 60;
+                gameHour++;
+                
+                if (gameHour >= 24) {
+                    gameHour = 0;
+                    gameDay++;
+                    saveGame();
+                }
+                
+                // Sistema día/noche: día 6:00-18:00 (12 horas), noche 18:00-2:00 (8 horas)
+                if (gameHour === nightStartHour && isDayTime) {
+                    toggleDayNight(false);
+                } else if (gameHour === 2 && !isDayTime) {
+                    toggleDayNight(true);
+                }
+                
+                // Cobrar mantenimiento por avión en tierra cada hora
+                if (gameHour !== lastPlaneMaintenanceHour) {
+                    chargePlaneMaintenance();
+                    lastPlaneMaintenanceHour = gameHour;
+                }
+            }
+            
+            updateTimeDisplay();
+        }
+
+        function toggleDayNight(toDay) {
+            isDayTime = toDay !== undefined ? toDay : !isDayTime;
+            
+            if (isDayTime) {
+                scene.background = new THREE.Color(0x87CEEB);
+                scene.fog = new THREE.FogExp2(0x87CEEB, 0.0003);
+                document.getElementById('day-night-indicator').className = 'day-mode';
+                document.getElementById('day-night-indicator').innerHTML = '☀️';
+            } else {
+                scene.background = new THREE.Color(0x020617);
+                scene.fog = new THREE.FogExp2(0x020617, 0.0005);
+                document.getElementById('day-night-indicator').className = 'night-mode';
+                document.getElementById('day-night-indicator').innerHTML = '🌙';
+            }
+        }
+
+        function updateTimeDisplay() {
+            const hourStr = gameHour.toString().padStart(2, '0');
+            const minuteStr = gameMinute.toString().padStart(2, '0');
+            const timeOfDay = isDayTime ? 'Día' : 'Noche';
+            document.getElementById('time-display').innerHTML = `${timeOfDay} ${gameDay} - ${hourStr}:${minuteStr}`;
+        }
+
+        function setTimeSpeed(speed) {
+            timeSpeed = speed;
+            updateTimeSpeedButtons();
+        }
+
+        function updateTimeSpeedButtons() {
+            document.querySelectorAll('.time-speed-btn').forEach(btn => {
+                btn.classList.remove('active');
+                const speed = parseInt(btn.textContent.replace('x', ''));
+                if (speed === timeSpeed) {
+                    btn.classList.add('active');
+                }
+            });
+        }
+
+        // --- Cobro de mantenimiento por avión en tierra ---
+        function chargePlaneMaintenance() {
+            let planesOnGround = 0;
+            
+            airplanes.forEach(plane => {
+                if (plane.data.state === 'PARKED' || plane.data.state === 'GROUND' || 
+                    plane.data.state === 'MOVING' || plane.data.state === 'MOVING_TO_PARKING') {
+                    planesOnGround++;
+                }
+            });
+            
+            if (planesOnGround > 0) {
+                const charge = planesOnGround * 100;
+                updateMoney(-charge);
+                showNotification(`-${charge}$ Mantenimiento por ${planesOnGround} avión(es) en tierra`);
+            }
+        }
+
+        // --- Control de Aviones ---
+        function showPlaneControls(plane) {
+            selectedPlane = plane;
+            document.getElementById('plane-controls').style.display = 'flex';
+            document.getElementById('back-btn').style.display = 'block';
+            
+            // Actualizar estado de los botones
+            const takeoffBtn = document.getElementById('takeoff-btn');
+            const runwayBtn = document.getElementById('runway-btn');
+            const parkingBtn = document.getElementById('parking-btn');
+            const tasksBtn = document.getElementById('tasks-btn');
+            
+            // Verificar si puede despegar
+            const canTakeoff = canPlaneTakeoff(plane);
+            takeoffBtn.disabled = !canTakeoff;
+            takeoffBtn.classList.toggle('disabled', !canTakeoff);
+            
+            // Verificar si está en pista
+            const isOnRunway = isPlaneOnRunway(plane);
+            runwayBtn.disabled = isOnRunway;
+            runwayBtn.classList.toggle('disabled', isOnRunway);
+            
+            // Verificar si está estacionado
+            const isParked = plane.data.state === 'PARKED';
+            parkingBtn.disabled = isParked;
+            parkingBtn.classList.toggle('disabled', isParked);
+            
+            // Habilitar tareas solo si está estacionado
+            tasksBtn.disabled = !isParked;
+            tasksBtn.classList.toggle('disabled', !isParked);
+        }
+
+        function hidePlaneControls() {
+            document.getElementById('plane-controls').style.display = 'none';
+            document.getElementById('back-btn').style.display = 'none';
+            selectedPlane = null;
+        }
+
+        function showPlaneTasks() {
+            if (!selectedPlane) return;
+            
+            document.getElementById('plane-tasks-controls').style.display = 'flex';
+            document.getElementById('plane-controls').style.display = 'none';
+            
+            // Actualizar estado de los botones de tareas
+            updatePlaneTasksButtons();
+        }
+
+        function hidePlaneTasks() {
+            document.getElementById('plane-tasks-controls').style.display = 'none';
+            document.getElementById('plane-controls').style.display = 'flex';
+        }
+
+        function updatePlaneTasksButtons() {
+            if (!selectedPlane) return;
+            
+            const stats = selectedPlane.data.stats;
+            
+            // Verificar si necesita bajar valijas (siempre disponible cuando está estacionado)
+            const unloadLuggageBtn = document.getElementById('unload-luggage-btn');
+            unloadLuggageBtn.disabled = false;
+            unloadLuggageBtn.classList.remove('disabled');
+            
+            // Verificar si necesita bajar pasajeros (siempre disponible cuando está estacionado)
+            const unloadPassengersBtn = document.getElementById('unload-passengers-btn');
+            unloadPassengersBtn.disabled = false;
+            unloadPassengersBtn.classList.remove('disabled');
+            
+            // Verificar si necesita combustible (>25% gastado)
+            const needsFuel = stats.fuel < 75;
+            const refuelTaskBtn = document.getElementById('refuel-task-btn');
+            refuelTaskBtn.disabled = !needsFuel;
+            refuelTaskBtn.classList.toggle('disabled', !needsFuel);
+            
+            // Verificar si necesita carga de batería (>25% gastado)
+            const needsBattery = stats.energy < 75;
+            const chargeBatteryBtn = document.getElementById('charge-battery-btn');
+            chargeBatteryBtn.disabled = !needsBattery;
+            chargeBatteryBtn.classList.toggle('disabled', !needsBattery);
+            
+            // Verificar si necesita mantenimiento (>25% gastado)
+            const needsMaintenance = stats.maintenance < 75;
+            const maintenanceTaskBtn = document.getElementById('maintenance-task-btn');
+            maintenanceTaskBtn.disabled = !needsMaintenance;
+            maintenanceTaskBtn.classList.toggle('disabled', !needsMaintenance);
+            
+            // Actualizar costos
+            document.getElementById('unload-luggage-cost').textContent = `$${TASK_COSTS.unload_luggage}`;
+            document.getElementById('unload-passengers-cost').textContent = `$${TASK_COSTS.unload_passengers}`;
+            document.getElementById('refuel-task-cost').textContent = `$${TASK_COSTS.refuel}`;
+            document.getElementById('charge-battery-cost').textContent = `$${TASK_COSTS.charge_battery}`;
+            document.getElementById('maintenance-task-cost').textContent = `$${TASK_COSTS.maintenance}`;
+        }
+
+        function canPlaneTakeoff(plane) {
+            // Verificar que todas las barras estén completas
+            if (plane.data.stats.fuel < 100 || plane.data.stats.maintenance < 100 || plane.data.stats.energy < 100) {
+                return false;
+            }
+            
+            // Verificar que haya pista disponible y sea del doble de ancho
+            const runways = Array.from(gridMap.values()).filter(t => t.userData.type === 'runway');
+            if (runways.length === 0) return false;
+            
+            // Verificar que la pista tenga el doble de ancho
+            const runway = findWideRunwayForTakeoff();
+            if (!runway) return false;
+            
+            // Verificar que la pista no esté ocupada
+            if (runwayOccupied) return false;
+            
+            return true;
+        }
+
+        function findWideRunwayForTakeoff() {
+            const runways = Array.from(gridMap.values()).filter(t => t.userData.type === 'runway');
+            
+            // Buscar pistas con espacio adicional (simulando doble ancho)
+            for (const runway of runways) {
+                // Verificar que haya espacio alrededor de la pista
+                const adjacentTiles = [
+                    gridMap.get(`${runway.userData.gridX + 1},${runway.userData.gridZ}`),
+                    gridMap.get(`${runway.userData.gridX - 1},${runway.userData.gridZ}`),
+                    gridMap.get(`${runway.userData.gridX},${runway.userData.gridZ + 1}`),
+                    gridMap.get(`${runway.userData.gridX},${runway.userData.gridZ - 1}`)
+                ];
+                
+                // Verificar que al menos un lado esté libre (simulando pista ancha)
+                const hasAdjacentSpace = adjacentTiles.some(tile => 
+                    tile && (tile.userData.type === 'grass' || tile.userData.type === 'runway')
+                );
+                
+                if (hasAdjacentSpace) {
+                    return runway;
+                }
+            }
+            
+            return null;
+        }
+
+        function isPlaneOnRunway(plane) {
+            const planePos = plane.mesh.position;
+            const runways = Array.from(gridMap.values()).filter(t => t.userData.type === 'runway');
+            
+            for (const runway of runways) {
+                if (planePos.distanceTo(runway.position) < TILE_SIZE * 0.8) {
+                    return true;
+                }
+            }
+            
+            return false;
+        }
+
+        function initiateTakeoff() {
+            if (!selectedPlane) return;
+            
+            if (!canPlaneTakeoff(selectedPlane)) {
+                showNotification("No puede despegar: Verifique combustible, batería, mantenimiento o pista disponible");
+                return;
+            }
+            
+            const wideRunway = findWideRunwayForTakeoff();
+            if (!wideRunway) {
+                showNotification("No hay pista suficientemente ancha para despegar");
+                return;
+            }
+            
+            // Mover avión a la pista si no está ya allí
+            if (!isPlaneOnRunway(selectedPlane)) {
+                selectedPlane.data.targetX = wideRunway.position.x;
+                selectedPlane.data.targetZ = wideRunway.position.z;
+                selectedPlane.data.state = 'MOVING';
+                showNotification("Avión en camino a la pista para despegue");
+            } else {
+                // Iniciar despegue
+                selectedPlane.data.state = 'TAKEOFF';
+                runwayOccupied = true;
+                saveActionToHistory({
+                    type: 'plane_takeoff',
+                    planeId: selectedPlane.data.id,
+                    timestamp: gameTime
+                });
+                showNotification("¡Despegue iniciado!");
+            }
+            
+            hidePlaneControls();
+        }
+
+        function movePlaneToRunway() {
+            if (!selectedPlane) return;
+            
+            const wideRunway = findWideRunwayForTakeoff();
+            if (!wideRunway) {
+                showNotification("No hay pista suficientemente ancha disponible");
+                return;
+            }
+            
+            selectedPlane.data.targetX = wideRunway.position.x;
+            selectedPlane.data.targetZ = wideRunway.position.z;
+            selectedPlane.data.state = 'MOVING';
+            showNotification("Avión en camino a la pista");
+            
+            hidePlaneControls();
+        }
+
+        function movePlaneToParking() {
+            if (!selectedPlane) return;
+            
+            // Encontrar posición de estacionamiento disponible
+            const parkingSpot = findAvailableParkingSpot();
+            if (!parkingSpot) {
+                showNotification("No hay posiciones de estacionamiento disponibles");
+                return;
+            }
+            
+            selectedPlane.data.targetX = parkingSpot.x;
+            selectedPlane.data.targetZ = parkingSpot.z;
+            selectedPlane.data.state = 'MOVING_TO_PARKING';
+            showNotification("Avión en camino a estacionamiento");
+            
+            hidePlaneControls();
+        }
+
+        // --- Tareas del Avión ---
+        function unloadLuggage() {
+            if (!selectedPlane) return;
+            
+            const cost = TASK_COSTS.unload_luggage;
+            if (money < cost) {
+                showNotification(`Dinero insuficiente para bajar valijas ($${cost} necesarios)`);
+                return;
+            }
+            
+            // Verificar si hay cinta de carga disponible
+            const beltLoader = findAvailableBeltLoader();
+            if (!beltLoader) {
+                showNotification("No hay cinta de carga disponible para bajar valijas");
+                return;
+            }
+            
+            updateMoney(-cost);
+            
+            // Mover cinta de carga al avión
+            beltLoader.targetX = selectedPlane.mesh.position.x - 5;
+            beltLoader.targetZ = selectedPlane.mesh.position.z;
+            
+            // Animación de descarga de valijas
+            animateBeltUnloading(selectedPlane, beltLoader);
+            
+            saveActionToHistory({
+                type: 'plane_task',
+                task: 'unload_luggage',
+                planeId: selectedPlane.data.id,
+                cost: cost,
+                timestamp: gameTime
+            });
+            
+            showNotification(`Valijas bajadas por $${cost}`);
+            hidePlaneTasks();
+            saveGame();
+        }
+
+        function unloadPassengers() {
+            if (!selectedPlane) return;
+            
+            const cost = TASK_COSTS.unload_passengers;
+            if (money < cost) {
+                showNotification(`Dinero insuficiente para bajar pasajeros ($${cost} necesarios)`);
+                return;
+            }
+            
+            updateMoney(-cost);
+            
+            // Simular tiempo de descarga
+            setTimeout(() => {
+                showNotification("Pasajeros bajados exitosamente");
+            }, 1000);
+            
+            saveActionToHistory({
+                type: 'plane_task',
+                task: 'unload_passengers',
+                planeId: selectedPlane.data.id,
+                cost: cost,
+                timestamp: gameTime
+            });
+            
+            showNotification(`Pasajeros bajados por $${cost}`);
+            hidePlaneTasks();
+            saveGame();
+        }
+
+        function refuelPlane
