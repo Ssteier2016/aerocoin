@@ -3,10 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Airport Tycoon Ultra - Isometric Curves Edition</title>
+    <title>Airport Tycoon Ultra - Isometric 45° Edition</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;700&display=swap');
@@ -679,6 +678,74 @@
             z-index: 50;
             pointer-events: none;
         }
+        
+        /* Grid lines */
+        .grid-line {
+            position: absolute;
+            pointer-events: none;
+            z-index: 1;
+        }
+        
+        .grid-line.horizontal {
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            width: 100%;
+        }
+        
+        .grid-line.vertical {
+            border-left: 1px solid rgba(255, 255, 255, 0.1);
+            height: 100%;
+        }
+        
+        /* Selected grid cell */
+        .grid-cell-selected {
+            position: absolute;
+            background: rgba(59, 130, 246, 0.2);
+            border: 2px solid #3b82f6;
+            pointer-events: none;
+            z-index: 2;
+        }
+        
+        /* Pause button */
+        #pause-btn {
+            position: fixed;
+            top: 20px;
+            right: 520px;
+            background: rgba(15, 23, 42, 0.9);
+            border: 1px solid rgba(255,255,255,0.1);
+            color: white;
+            padding: 10px 15px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            backdrop-filter: blur(10px);
+            z-index: 100;
+        }
+        
+        #pause-btn:hover {
+            background: rgba(59, 130, 246, 0.3);
+            border-color: #3b82f6;
+        }
+        
+        /* Minimize button for sidebar */
+        #minimize-btn {
+            cursor: pointer;
+            font-size: 20px;
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 5px;
+            transition: 0.2s;
+        }
+        
+        #minimize-btn:hover {
+            background: rgba(255,255,255,0.1);
+        }
     </style>
 </head>
 <body>
@@ -686,7 +753,7 @@
     <div id="lobby" class="fixed inset-0 z-[2000] flex items-center justify-center bg-slate-950 p-6">
         <div class="glass p-12 rounded-[3rem] max-w-sm w-full text-center border-blue-500/30">
             <h1 class="text-4xl font-bold text-white mb-2">AIRPORT <span class="text-blue-500">PRO</span></h1>
-            <p class="text-slate-500 text-sm mb-10 tracking-widest uppercase">Isometric 45° - Smart Roads</p>
+            <p class="text-slate-500 text-sm mb-10 tracking-widest uppercase">Isometric 45° - Grid System</p>
             <button id="start-btn" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-5 rounded-2xl shadow-2xl transition-all">INICIAR OPERACIONES</button>
         </div>
     </div>
@@ -709,6 +776,10 @@
             </div>
             <div id="fee-feedback">-$100 (Mant.)</div>
         </div>
+        
+        <button id="pause-btn" onclick="togglePause()">
+            ⏸️ Pausa
+        </button>
         
         <div id="time-controls">
             <div id="day-night-indicator" class="day-mode">☀️</div>
@@ -738,7 +809,7 @@
             🛒 Tienda Minimizada
         </div>
         
-        <button id="back-btn" onclick="deselectAll()">
+        <button id="back-btn" onclick="goBack()">
             ← Volver
         </button>
         
@@ -1021,6 +1092,7 @@
         <div id="sidebar" class="glass rounded-3xl shadow-2xl">
             <div id="drag-handle">
                 <span>🏗️ Gestión Isométrica</span>
+                <div id="minimize-btn" onclick="toggleSidebar()">_</div>
             </div>
             <div id="menu-content" class="p-5 overflow-y-auto">
                 <p class="text-slate-500 text-[9px] font-bold uppercase mb-2 tracking-widest">Navegación</p>
@@ -1037,42 +1109,23 @@
         </div>
     </div>
 
+    <div id="grid-overlay"></div>
+
     <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-app.js";
-        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-auth.js";
-        import { getFirestore, doc, setDoc, onSnapshot, collection } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-firestore.js";
-
-        // --- Configuración Segura ---
-        let db = null;
-        let appId = 'airport-isometric-v2';
-
-        try {
-            if (typeof __firebase_config !== 'undefined') {
-                const firebaseConfig = JSON.parse(__firebase_config);
-                const app = initializeApp(firebaseConfig);
-                const auth = getAuth(app);
-                db = getFirestore(app);
-                signInAnonymously(auth);
-            }
-        } catch (e) { console.warn("Firebase offline mode."); }
-
         // --- Estado Global ---
-        let scene, camera, renderer, raycaster, mouse, controls;
+        let scene, camera, renderer, raycaster, mouse;
         let gridMap = new Map(), airplanes = new Map(), localVehicles = [], buildings = [];
         let currentTool = 'select', money = 100000;
         let selectedEntity = null;
         let selectedPlane = null;
-        let maintenanceTick = 0;
         let gameTime = 0;
         let gameDay = 1;
         let gameHour = 6;
         let gameMinute = 0;
         let isDayTime = true;
         let timeSpeed = 1;
-        let towerMaintenanceInterval = 86400;
-        let dayStartHour = 6;
-        let nightStartHour = 18;
-        let nightDuration = 8;
+        let isPaused = false;
+        let lastUpdateTime = 0;
         
         let parkingPositions = [];
         let occupiedParkingSpots = new Map();
@@ -1080,14 +1133,13 @@
         let landingRunway = null;
         let lastPlaneMaintenanceHour = gameHour;
         
-        // Variables para selección de cuadrícula y movimiento de edificios
+        // Variables para selección de cuadrícula
         let selectedBuilding = null;
         let isMovingBuilding = false;
-        let gridSelection = null;
-        let isGridSelectMode = false;
-        let selectedGridCells = new Set();
         let buildingOriginalPosition = null;
         let buildingRotation = 0;
+        let selectedGridCell = null;
+        let gridLines = [];
         
         // Historial de acciones para deshacer
         let actionHistory = [];
@@ -1098,7 +1150,7 @@
         let beltLoaderAnimation = null;
 
         const TILE_SIZE = 8;
-        const VIEW_RADIUS = 15;
+        const VIEW_RADIUS = 20;
         const COLORS = {
             grass: 0x14532d,
             runway: 0x111111,
@@ -1125,140 +1177,6 @@
             charge_battery: 400,
             maintenance: 600
         };
-
-        const textureLoader = new THREE.TextureLoader();
-
-        // --- Sistema de Historial (Undo) ---
-        function saveActionToHistory(action) {
-            actionHistory.push(action);
-            if (actionHistory.length > MAX_HISTORY) {
-                actionHistory.shift();
-            }
-        }
-
-        function undoLastAction() {
-            if (actionHistory.length === 0) {
-                showNotification("No hay acciones para deshacer");
-                return;
-            }
-            
-            const lastAction = actionHistory.pop();
-            
-            switch (lastAction.type) {
-                case 'build':
-                    // Revertir construcción
-                    const tile = gridMap.get(`${lastAction.x},${lastAction.z}`);
-                    if (tile) {
-                        const refund = PRICES[lastAction.newType] * 0.5;
-                        if (refund > 0) {
-                            updateMoney(refund);
-                        }
-                        updateTileUI(lastAction.x, lastAction.z, lastAction.oldType);
-                        showNotification(`Deshecho: ${lastAction.newType} removido`);
-                    }
-                    break;
-                    
-                case 'demolish':
-                    // Revertir demolición
-                    updateTileUI(lastAction.x, lastAction.z, lastAction.oldType);
-                    updateMoney(-PRICES[lastAction.oldType] * 0.5);
-                    showNotification(`Deshecho: ${lastAction.oldType} restaurado`);
-                    break;
-                    
-                case 'plane_takeoff':
-                    // Revertir despegue (no se puede, solo notificación)
-                    showNotification("No se puede revertir despegue");
-                    break;
-                    
-                case 'plane_landing':
-                    // Revertir aterrizaje (no se puede, solo notificación)
-                    showNotification("No se puede revertir aterrizaje");
-                    break;
-                    
-                case 'plane_task':
-                    // Revertir tarea de avión
-                    if (lastAction.task === 'unload_luggage' || lastAction.task === 'unload_passengers') {
-                        showNotification(`No se puede revertir: ${lastAction.task}`);
-                    } else {
-                        updateMoney(TASK_COSTS[lastAction.task]);
-                        showNotification(`Deshecho: ${lastAction.task} revertido`);
-                    }
-                    break;
-            }
-            
-            saveGame();
-        }
-
-        // --- Cargar y guardar juego ---
-        function saveGame() {
-            const gameState = {
-                money: money,
-                gameDay: gameDay,
-                gameHour: gameHour,
-                gameMinute: gameMinute,
-                isDayTime: isDayTime,
-                timeSpeed: timeSpeed,
-                airplanes: Array.from(airplanes.entries()).map(([id, plane]) => ({
-                    id,
-                    data: plane.data,
-                    position: plane.mesh.position,
-                    rotation: plane.mesh.rotation
-                })),
-                localVehicles: localVehicles.map(vehicle => ({
-                    type: vehicle.type,
-                    position: vehicle.mesh.position,
-                    rotation: vehicle.mesh.rotation,
-                    stats: vehicle.stats
-                })),
-                buildings: buildings.map(building => ({
-                    type: building.type,
-                    position: building.mesh.position,
-                    rotation: building.mesh.rotation,
-                    stats: building.stats
-                })),
-                gridMap: Array.from(gridMap.entries()).map(([key, tile]) => ({
-                    key,
-                    type: tile.userData.type,
-                    position: tile.position,
-                    rotation: tile.rotation
-                })),
-                actionHistory: actionHistory
-            };
-            
-            try {
-                localStorage.setItem('airportTycoonSave', JSON.stringify(gameState));
-                console.log('Juego guardado en caché');
-            } catch (e) {
-                console.warn('No se pudo guardar el juego:', e);
-            }
-        }
-
-        function loadGame() {
-            try {
-                const saved = localStorage.getItem('airportTycoonSave');
-                if (saved) {
-                    const gameState = JSON.parse(saved);
-                    
-                    money = gameState.money || 100000;
-                    gameDay = gameState.gameDay || 1;
-                    gameHour = gameState.gameHour || 6;
-                    gameMinute = gameState.gameMinute || 0;
-                    isDayTime = gameState.isDayTime !== undefined ? gameState.isDayTime : true;
-                    timeSpeed = gameState.timeSpeed || 1;
-                    actionHistory = gameState.actionHistory || [];
-                    
-                    updateMoneyDisplay();
-                    updateTimeDisplay();
-                    updateTimeSpeedButtons();
-                    
-                    console.log('Juego cargado desde caché');
-                    return true;
-                }
-            } catch (e) {
-                console.warn('Error cargando juego:', e);
-            }
-            return false;
-        }
 
         // --- Funciones del Shop ---
         function openShop() {
@@ -1307,9 +1225,13 @@
             }
         }
 
-        // --- Sistema de Tiempo ---
-        function updateGameTime() {
-            gameMinute += timeSpeed;
+        // --- Sistema de Tiempo Real ---
+        function updateGameTime(deltaTime) {
+            if (isPaused) return;
+            
+            // Convertir deltaTime a minutos de juego (1 segundo real = 1 minuto de juego)
+            const gameMinutesPerRealSecond = timeSpeed / 60; // timeSpeed multiplica la velocidad
+            gameMinute += deltaTime * gameMinutesPerRealSecond * 60;
             
             while (gameMinute >= 60) {
                 gameMinute -= 60;
@@ -1321,10 +1243,10 @@
                     saveGame();
                 }
                 
-                // Sistema día/noche: día 6:00-18:00 (12 horas), noche 18:00-2:00 (8 horas)
-                if (gameHour === nightStartHour && isDayTime) {
+                // Sistema día/noche: día 6:00-18:00 (12 horas), noche 18:00-6:00 (12 horas)
+                if (gameHour === 18 && isDayTime) {
                     toggleDayNight(false);
-                } else if (gameHour === 2 && !isDayTime) {
+                } else if (gameHour === 6 && !isDayTime) {
                     toggleDayNight(true);
                 }
                 
@@ -1355,8 +1277,8 @@
         }
 
         function updateTimeDisplay() {
-            const hourStr = gameHour.toString().padStart(2, '0');
-            const minuteStr = gameMinute.toString().padStart(2, '0');
+            const hourStr = Math.floor(gameHour).toString().padStart(2, '0');
+            const minuteStr = Math.floor(gameMinute).toString().padStart(2, '0');
             const timeOfDay = isDayTime ? 'Día' : 'Noche';
             document.getElementById('time-display').innerHTML = `${timeOfDay} ${gameDay} - ${hourStr}:${minuteStr}`;
         }
@@ -1364,6 +1286,7 @@
         function setTimeSpeed(speed) {
             timeSpeed = speed;
             updateTimeSpeedButtons();
+            showNotification(`Velocidad del tiempo: ${speed}x`);
         }
 
         function updateTimeSpeedButtons() {
@@ -1374,6 +1297,18 @@
                     btn.classList.add('active');
                 }
             });
+        }
+
+        function togglePause() {
+            isPaused = !isPaused;
+            const pauseBtn = document.getElementById('pause-btn');
+            if (isPaused) {
+                pauseBtn.innerHTML = '▶️ Reanudar';
+                showNotification("Juego pausado");
+            } else {
+                pauseBtn.innerHTML = '⏸️ Pausa';
+                showNotification("Juego reanudado");
+            }
         }
 
         // --- Cobro de mantenimiento por avión en tierra ---
@@ -1428,8 +1363,8 @@
 
         function hidePlaneControls() {
             document.getElementById('plane-controls').style.display = 'none';
-            document.getElementById('back-btn').style.display = 'none';
             selectedPlane = null;
+            updateBackButton();
         }
 
         function showPlaneTasks() {
@@ -1494,44 +1429,14 @@
                 return false;
             }
             
-            // Verificar que haya pista disponible y sea del doble de ancho
+            // Verificar que haya pista disponible
             const runways = Array.from(gridMap.values()).filter(t => t.userData.type === 'runway');
             if (runways.length === 0) return false;
-            
-            // Verificar que la pista tenga el doble de ancho
-            const runway = findWideRunwayForTakeoff();
-            if (!runway) return false;
             
             // Verificar que la pista no esté ocupada
             if (runwayOccupied) return false;
             
             return true;
-        }
-
-        function findWideRunwayForTakeoff() {
-            const runways = Array.from(gridMap.values()).filter(t => t.userData.type === 'runway');
-            
-            // Buscar pistas con espacio adicional (simulando doble ancho)
-            for (const runway of runways) {
-                // Verificar que haya espacio alrededor de la pista
-                const adjacentTiles = [
-                    gridMap.get(`${runway.userData.gridX + 1},${runway.userData.gridZ}`),
-                    gridMap.get(`${runway.userData.gridX - 1},${runway.userData.gridZ}`),
-                    gridMap.get(`${runway.userData.gridX},${runway.userData.gridZ + 1}`),
-                    gridMap.get(`${runway.userData.gridX},${runway.userData.gridZ - 1}`)
-                ];
-                
-                // Verificar que al menos un lado esté libre (simulando pista ancha)
-                const hasAdjacentSpace = adjacentTiles.some(tile => 
-                    tile && (tile.userData.type === 'grass' || tile.userData.type === 'runway')
-                );
-                
-                if (hasAdjacentSpace) {
-                    return runway;
-                }
-            }
-            
-            return null;
         }
 
         function isPlaneOnRunway(plane) {
@@ -1555,16 +1460,17 @@
                 return;
             }
             
-            const wideRunway = findWideRunwayForTakeoff();
-            if (!wideRunway) {
-                showNotification("No hay pista suficientemente ancha para despegar");
+            // Encontrar pista más cercana
+            const runway = findNearestRunway(selectedPlane.mesh.position);
+            if (!runway) {
+                showNotification("No hay pista disponible");
                 return;
             }
             
             // Mover avión a la pista si no está ya allí
             if (!isPlaneOnRunway(selectedPlane)) {
-                selectedPlane.data.targetX = wideRunway.position.x;
-                selectedPlane.data.targetZ = wideRunway.position.z;
+                selectedPlane.data.targetX = runway.position.x;
+                selectedPlane.data.targetZ = runway.position.z;
                 selectedPlane.data.state = 'MOVING';
                 showNotification("Avión en camino a la pista para despegue");
             } else {
@@ -1582,17 +1488,33 @@
             hidePlaneControls();
         }
 
+        function findNearestRunway(position) {
+            const runways = Array.from(gridMap.values()).filter(t => t.userData.type === 'runway');
+            let nearest = null;
+            let nearestDistance = Infinity;
+            
+            for (const runway of runways) {
+                const distance = position.distanceTo(runway.position);
+                if (distance < nearestDistance) {
+                    nearestDistance = distance;
+                    nearest = runway;
+                }
+            }
+            
+            return nearest;
+        }
+
         function movePlaneToRunway() {
             if (!selectedPlane) return;
             
-            const wideRunway = findWideRunwayForTakeoff();
-            if (!wideRunway) {
-                showNotification("No hay pista suficientemente ancha disponible");
+            const runway = findNearestRunway(selectedPlane.mesh.position);
+            if (!runway) {
+                showNotification("No hay pista disponible");
                 return;
             }
             
-            selectedPlane.data.targetX = wideRunway.position.x;
-            selectedPlane.data.targetZ = wideRunway.position.z;
+            selectedPlane.data.targetX = runway.position.x;
+            selectedPlane.data.targetZ = runway.position.z;
             selectedPlane.data.state = 'MOVING';
             showNotification("Avión en camino a la pista");
             
@@ -1845,10 +1767,10 @@
 
         function hideBuildingControls() {
             document.getElementById('building-controls').style.display = 'none';
-            document.getElementById('back-btn').style.display = 'none';
             selectedBuilding = null;
             buildingOriginalPosition = null;
             buildingRotation = 0;
+            updateBackButton();
         }
 
         // --- Funciones para la cinta de carga ---
@@ -1942,8 +1864,28 @@
             selectedEntity = null;
             selectedPlane = null;
             selectedBuilding = null;
-            document.getElementById('back-btn').style.display = 'none';
+            updateBackButton();
             showNotification("Selección cancelada");
+        }
+
+        function goBack() {
+            if (document.getElementById('plane-tasks-controls').style.display === 'flex') {
+                hidePlaneTasks();
+            } else if (document.getElementById('plane-controls').style.display === 'flex') {
+                hidePlaneControls();
+            } else if (document.getElementById('building-controls').style.display === 'flex') {
+                hideBuildingControls();
+            } else {
+                deselectAll();
+            }
+        }
+
+        function updateBackButton() {
+            const showBack = document.getElementById('plane-controls').style.display === 'flex' ||
+                            document.getElementById('plane-tasks-controls').style.display === 'flex' ||
+                            document.getElementById('building-controls').style.display === 'flex';
+            
+            document.getElementById('back-btn').style.display = showBack ? 'block' : 'none';
         }
 
         function findAvailableParkingSpot() {
@@ -1968,6 +1910,185 @@
             return null;
         }
 
+        // --- Sistema de Historial (Undo) ---
+        function saveActionToHistory(action) {
+            actionHistory.push(action);
+            if (actionHistory.length > MAX_HISTORY) {
+                actionHistory.shift();
+            }
+        }
+
+        function undoLastAction() {
+            if (actionHistory.length === 0) {
+                showNotification("No hay acciones para deshacer");
+                return;
+            }
+            
+            const lastAction = actionHistory.pop();
+            
+            switch (lastAction.type) {
+                case 'build':
+                    // Revertir construcción
+                    const tile = gridMap.get(`${lastAction.x},${lastAction.z}`);
+                    if (tile) {
+                        const refund = PRICES[lastAction.newType] * 0.5;
+                        if (refund > 0) {
+                            updateMoney(refund);
+                        }
+                        updateTileUI(lastAction.x, lastAction.z, lastAction.oldType);
+                        showNotification(`Deshecho: ${lastAction.newType} removido`);
+                    }
+                    break;
+                    
+                case 'demolish':
+                    // Revertir demolición
+                    updateTileUI(lastAction.x, lastAction.z, lastAction.oldType);
+                    updateMoney(-PRICES[lastAction.oldType] * 0.5);
+                    showNotification(`Deshecho: ${lastAction.oldType} restaurado`);
+                    break;
+                    
+                case 'plane_takeoff':
+                    // Revertir despegue (no se puede, solo notificación)
+                    showNotification("No se puede revertir despegue");
+                    break;
+                    
+                case 'plane_landing':
+                    // Revertir aterrizaje (no se puede, solo notificación)
+                    showNotification("No se puede revertir aterrizaje");
+                    break;
+                    
+                case 'plane_task':
+                    // Revertir tarea de avión
+                    if (lastAction.task === 'unload_luggage' || lastAction.task === 'unload_passengers') {
+                        showNotification(`No se puede revertir: ${lastAction.task}`);
+                    } else {
+                        updateMoney(TASK_COSTS[lastAction.task]);
+                        showNotification(`Deshecho: ${lastAction.task} revertido`);
+                    }
+                    break;
+            }
+            
+            saveGame();
+        }
+
+        // --- Cargar y guardar juego ---
+        function saveGame() {
+            const gameState = {
+                money: money,
+                gameDay: gameDay,
+                gameHour: gameHour,
+                gameMinute: gameMinute,
+                isDayTime: isDayTime,
+                timeSpeed: timeSpeed,
+                airplanes: Array.from(airplanes.entries()).map(([id, plane]) => ({
+                    id,
+                    data: plane.data,
+                    position: plane.mesh.position,
+                    rotation: plane.mesh.rotation
+                })),
+                localVehicles: localVehicles.map(vehicle => ({
+                    type: vehicle.type,
+                    position: vehicle.mesh.position,
+                    rotation: vehicle.mesh.rotation,
+                    stats: vehicle.stats
+                })),
+                buildings: buildings.map(building => ({
+                    type: building.type,
+                    position: building.mesh.position,
+                    rotation: building.mesh.rotation,
+                    stats: building.stats
+                })),
+                gridMap: Array.from(gridMap.entries()).map(([key, tile]) => ({
+                    key,
+                    type: tile.userData.type,
+                    position: tile.position,
+                    rotation: tile.rotation
+                })),
+                actionHistory: actionHistory
+            };
+            
+            try {
+                localStorage.setItem('airportTycoonSave', JSON.stringify(gameState));
+                console.log('Juego guardado en caché');
+            } catch (e) {
+                console.warn('No se pudo guardar el juego:', e);
+            }
+        }
+
+        function loadGame() {
+            try {
+                const saved = localStorage.getItem('airportTycoonSave');
+                if (saved) {
+                    const gameState = JSON.parse(saved);
+                    
+                    money = gameState.money || 100000;
+                    gameDay = gameState.gameDay || 1;
+                    gameHour = gameState.gameHour || 6;
+                    gameMinute = gameState.gameMinute || 0;
+                    isDayTime = gameState.isDayTime !== undefined ? gameState.isDayTime : true;
+                    timeSpeed = gameState.timeSpeed || 1;
+                    actionHistory = gameState.actionHistory || [];
+                    
+                    updateMoneyDisplay();
+                    updateTimeDisplay();
+                    updateTimeSpeedButtons();
+                    
+                    console.log('Juego cargado desde caché');
+                    return true;
+                }
+            } catch (e) {
+                console.warn('Error cargando juego:', e);
+            }
+            return false;
+        }
+
+        // --- Sistema de Grid ---
+        function createGridLines() {
+            const gridSize = VIEW_RADIUS * 2 * TILE_SIZE;
+            const gridOverlay = document.getElementById('grid-overlay');
+            gridOverlay.innerHTML = '';
+            
+            // Crear líneas horizontales
+            for (let z = -VIEW_RADIUS; z <= VIEW_RADIUS; z++) {
+                const line = document.createElement('div');
+                line.className = 'grid-line horizontal';
+                line.style.top = `${(z + VIEW_RADIUS) * TILE_SIZE}px`;
+                gridOverlay.appendChild(line);
+                gridLines.push(line);
+            }
+            
+            // Crear líneas verticales
+            for (let x = -VIEW_RADIUS; x <= VIEW_RADIUS; x++) {
+                const line = document.createElement('div');
+                line.className = 'grid-line vertical';
+                line.style.left = `${(x + VIEW_RADIUS) * TILE_SIZE}px`;
+                gridOverlay.appendChild(line);
+                gridLines.push(line);
+            }
+        }
+
+        function selectGridCell(x, z) {
+            // Limpiar selección anterior
+            const oldSelected = document.querySelector('.grid-cell-selected');
+            if (oldSelected) {
+                oldSelected.remove();
+            }
+            
+            selectedGridCell = { x, z };
+            
+            // Crear nueva selección
+            const selection = document.createElement('div');
+            selection.className = 'grid-cell-selected';
+            selection.style.left = `${(x + VIEW_RADIUS) * TILE_SIZE}px`;
+            selection.style.top = `${(z + VIEW_RADIUS) * TILE_SIZE}px`;
+            selection.style.width = `${TILE_SIZE}px`;
+            selection.style.height = `${TILE_SIZE}px`;
+            
+            document.getElementById('grid-overlay').appendChild(selection);
+            
+            showNotification(`Celda seleccionada: (${x}, ${z})`);
+        }
+
         // --- Inicialización del juego ---
         function init() {
             // Crear escena
@@ -1975,22 +2096,21 @@
             scene.background = new THREE.Color(0x87CEEB);
             scene.fog = new THREE.FogExp2(0x87CEEB, 0.0003);
             
-            // Crear cámara
-            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
-            camera.position.set(0, 60, 60);
+            // Crear cámara con vista isométrica a 45°
+            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(60, 80, 60);
             camera.lookAt(0, 0, 0);
+            
+            // Bloquear rotación de cámara
+            camera.rotation.order = 'YXZ';
+            camera.rotation.x = -Math.PI / 4;
+            camera.rotation.y = Math.PI / 4;
             
             // Crear renderer
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
             document.body.appendChild(renderer.domElement);
-            
-            // Controles de órbita
-            controls = new THREE.OrbitControls(camera, renderer.domElement);
-            controls.enableDamping = true;
-            controls.dampingFactor = 0.05;
-            controls.minDistance = 20;
-            controls.maxDistance = 200;
             
             // Raycaster para detección de clics
             raycaster = new THREE.Raycaster();
@@ -2002,20 +2122,30 @@
             
             const directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
             directionalLight.position.set(10, 20, 5);
+            directionalLight.castShadow = true;
             scene.add(directionalLight);
             
             // Crear terreno inicial
             createInitialTerrain();
             
+            // Crear grid overlay
+            createGridLines();
+            
             // Cargar juego guardado
-            loadGame();
+            if (!loadGame()) {
+                // Si no hay juego guardado, iniciar con $100,000
+                money = 100000;
+                updateMoneyDisplay();
+            }
             
             // Iniciar bucle de animación
+            lastUpdateTime = Date.now();
             animate();
             
             // Event listeners
             window.addEventListener('resize', onWindowResize);
             renderer.domElement.addEventListener('click', onCanvasClick);
+            renderer.domElement.addEventListener('mousemove', onCanvasMouseMove);
             
             // Iniciar desde el lobby
             document.getElementById('start-btn').addEventListener('click', startGame);
@@ -2039,6 +2169,7 @@
             const tile = new THREE.Mesh(geometry, material);
             tile.rotation.x = -Math.PI / 2;
             tile.position.set(x * TILE_SIZE, 0, z * TILE_SIZE);
+            tile.receiveShadow = true;
             
             // Guardar información en userData
             tile.userData = {
@@ -2084,6 +2215,7 @@
             
             const planeMesh = new THREE.Mesh(geometry, material);
             planeMesh.position.set(0, 1, 0);
+            planeMesh.castShadow = true;
             scene.add(planeMesh);
             
             const planeData = {
@@ -2128,9 +2260,21 @@
             
             const material = new THREE.MeshLambertMaterial({ color: color });
             const buildingMesh = new THREE.Mesh(geometry, material);
+            buildingMesh.castShadow = true;
+            buildingMesh.receiveShadow = true;
             
-            // Posicionar cerca del centro
-            buildingMesh.position.set(30, 2, 30);
+            // Posicionar en celda seleccionada
+            if (selectedGridCell) {
+                buildingMesh.position.set(
+                    selectedGridCell.x * TILE_SIZE + TILE_SIZE/2,
+                    2,
+                    selectedGridCell.z * TILE_SIZE + TILE_SIZE/2
+                );
+            } else {
+                // Posicionar cerca del centro
+                buildingMesh.position.set(30, 2, 30);
+            }
+            
             scene.add(buildingMesh);
             
             const buildingData = {
@@ -2151,7 +2295,7 @@
         }
 
         function buyVehicle(type) {
-            // Esta función sería para comprar vehículos terrestres
+            // Implementación para vehículos terrestres
             showNotification(`Vehículo ${type} comprado (implementación pendiente)`);
         }
 
@@ -2234,6 +2378,9 @@
                 const gridX = tile.userData.gridX;
                 const gridZ = tile.userData.gridZ;
                 
+                // Seleccionar celda de grid
+                selectGridCell(gridX, gridZ);
+                
                 // Manejar diferentes herramientas
                 switch(currentTool) {
                     case 'runway':
@@ -2273,23 +2420,44 @@
             }
         }
 
+        function onCanvasMouseMove(event) {
+            // Calcular posición del mouse
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+            
+            raycaster.setFromCamera(mouse, camera);
+            
+            // Verificar hover sobre el suelo
+            const groundResults = raycaster.intersectObjects(Array.from(gridMap.values()));
+            
+            if (groundResults.length > 0) {
+                const tile = groundResults[0].object;
+                const gridX = tile.userData.gridX;
+                const gridZ = tile.userData.gridZ;
+                
+                // Podrías agregar un efecto de highlight aquí
+            }
+        }
+
         function animate() {
             requestAnimationFrame(animate);
             
-            // Actualizar tiempo del juego
-            updateGameTime();
+            // Calcular delta time
+            const currentTime = Date.now();
+            const deltaTime = (currentTime - lastUpdateTime) / 1000; // en segundos
+            lastUpdateTime = currentTime;
             
-            // Actualizar controles
-            controls.update();
+            // Actualizar tiempo del juego
+            updateGameTime(deltaTime);
             
             // Actualizar aviones
-            updatePlanes();
+            updatePlanes(deltaTime);
             
             // Renderizar
             renderer.render(scene, camera);
         }
 
-        function updatePlanes() {
+        function updatePlanes(deltaTime) {
             airplanes.forEach(plane => {
                 const data = plane.data;
                 const mesh = plane.mesh;
@@ -2305,8 +2473,9 @@
                             
                             if (distance > 0.5) {
                                 // Mover gradualmente
-                                mesh.position.x += dx * 0.05;
-                                mesh.position.z += dz * 0.05;
+                                const speed = 5 * deltaTime;
+                                mesh.position.x += dx * speed;
+                                mesh.position.z += dz * speed;
                                 
                                 // Rotar hacia la dirección
                                 const targetRotation = Math.atan2(dx, dz);
@@ -2325,8 +2494,9 @@
                         
                     case 'TAKEOFF':
                         // Animación de despegue
-                        mesh.position.y += 0.2;
-                        mesh.position.x += 0.5;
+                        const takeoffSpeed = 10 * deltaTime;
+                        mesh.position.y += takeoffSpeed;
+                        mesh.position.x += takeoffSpeed * 0.5;
                         
                         if (mesh.position.y > 50) {
                             // Avión ha despegado
@@ -2340,10 +2510,11 @@
                 
                 // Degradar estadísticas con el tiempo
                 if (data.state === 'PARKED' || data.state === 'GROUND') {
-                    // Degradar lentamente mientras está en tierra
-                    data.stats.fuel = Math.max(0, data.stats.fuel - 0.001 * timeSpeed);
-                    data.stats.energy = Math.max(0, data.stats.energy - 0.001 * timeSpeed);
-                    data.stats.maintenance = Math.max(0, data.stats.maintenance - 0.0005 * timeSpeed);
+                    // Degradar lentamente mientras está en tierra (1% por hora real)
+                    const degradationRate = 0.01 * deltaTime / 3600;
+                    data.stats.fuel = Math.max(0, data.stats.fuel - degradationRate * 100);
+                    data.stats.energy = Math.max(0, data.stats.energy - degradationRate * 100);
+                    data.stats.maintenance = Math.max(0, data.stats.maintenance - degradationRate * 50);
                 }
             });
         }
@@ -2352,6 +2523,9 @@
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
+            
+            // Actualizar grid overlay
+            createGridLines();
         }
 
         function startGame() {
@@ -2371,9 +2545,74 @@
         }
 
         function confirmRestart() {
-            // Reiniciar juego
+            // Limpiar localStorage
             localStorage.removeItem('airportTycoonSave');
-            location.reload();
+            
+            // Reiniciar variables del juego
+            money = 100000;
+            gameDay = 1;
+            gameHour = 6;
+            gameMinute = 0;
+            isDayTime = true;
+            timeSpeed = 1;
+            isPaused = false;
+            
+            // Limpiar escena
+            while(scene.children.length > 0) { 
+                scene.remove(scene.children[0]); 
+            }
+            
+            // Reiniciar estructuras de datos
+            gridMap.clear();
+            airplanes.clear();
+            localVehicles = [];
+            buildings = [];
+            actionHistory = [];
+            parkingPositions = [];
+            occupiedParkingSpots.clear();
+            runwayOccupied = false;
+            
+            // Recrear luces y terreno
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+            scene.add(ambientLight);
+            
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
+            directionalLight.position.set(10, 20, 5);
+            directionalLight.castShadow = true;
+            scene.add(directionalLight);
+            
+            createInitialTerrain();
+            
+            // Actualizar UI
+            updateMoneyDisplay();
+            updateTimeDisplay();
+            updateTimeSpeedButtons();
+            
+            // Actualizar botón de pausa
+            document.getElementById('pause-btn').innerHTML = '⏸️ Pausa';
+            
+            // Cerrar diálogo
+            closeConfirmDialog();
+            
+            showNotification("¡Juego reiniciado! Comienza con $100,000");
+        }
+
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            const content = document.getElementById('menu-content');
+            const minimizeBtn = document.getElementById('minimize-btn');
+            
+            if (content.style.display !== 'none') {
+                content.style.display = 'none';
+                sidebar.style.height = 'auto';
+                minimizeBtn.innerHTML = '□';
+                minimizeBtn.title = 'Maximizar';
+            } else {
+                content.style.display = 'block';
+                sidebar.style.height = '85vh';
+                minimizeBtn.innerHTML = '_';
+                minimizeBtn.title = 'Minimizar';
+            }
         }
 
         // Inicializar el juego cuando se carga la página
