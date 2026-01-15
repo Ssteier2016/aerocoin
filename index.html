@@ -439,6 +439,57 @@
             cursor: not-allowed;
         }
         
+        /* Plane Tasks Controls */
+        #plane-tasks-controls {
+            position: fixed;
+            bottom: 100px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(15, 23, 42, 0.95);
+            border-radius: 15px;
+            padding: 20px;
+            display: none;
+            gap: 12px;
+            backdrop-filter: blur(10px);
+            border: 2px solid #3b82f6;
+            z-index: 160;
+            flex-wrap: wrap;
+            max-width: 90%;
+            min-width: 300px;
+        }
+        
+        .plane-task-btn {
+            background: rgba(59, 130, 246, 0.3);
+            border: 1px solid #3b82f6;
+            color: white;
+            padding: 12px 18px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex: 1;
+            min-width: 140px;
+            justify-content: center;
+        }
+        
+        .plane-task-btn:hover {
+            background: rgba(59, 130, 246, 0.5);
+        }
+        
+        .plane-task-btn.disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .task-cost {
+            font-size: 12px;
+            color: #fbbf24;
+            margin-left: auto;
+        }
+        
         /* Game controls */
         #game-controls {
             position: fixed;
@@ -553,10 +604,15 @@
                 flex-direction: column;
             }
             
-            .plane-control-btn {
+            .plane-control-btn, .plane-task-btn {
                 min-width: 100px;
                 font-size: 13px;
                 padding: 8px 12px;
+            }
+            
+            #plane-tasks-controls {
+                padding: 15px;
+                min-width: 250px;
             }
         }
         
@@ -611,6 +667,17 @@
         #back-btn:hover {
             background: rgba(59, 130, 246, 0.3);
             border-color: #3b82f6;
+        }
+        
+        /* Belt loader indicator */
+        .belt-loader {
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            background: #fbbf24;
+            border-radius: 50%;
+            z-index: 50;
+            pointer-events: none;
         }
     </style>
 </head>
@@ -698,14 +765,38 @@
             <button class="plane-control-btn" onclick="movePlaneToParking()" id="parking-btn">
                 🅿️ Estacionar
             </button>
-            <button class="plane-control-btn" onclick="refuelPlane()" id="refuel-btn">
-                ⛽ Repostar
-            </button>
-            <button class="plane-control-btn" onclick="maintainPlane()" id="maintain-btn">
-                🔧 Mantenimiento
+            <button class="plane-control-btn" onclick="showPlaneTasks()" id="tasks-btn">
+                🛠️ Tareas
             </button>
             <button class="plane-control-btn" onclick="deselectAll()" id="cancel-btn">
                 ❌ Cancelar
+            </button>
+        </div>
+        
+        <!-- Plane Tasks Controls -->
+        <div id="plane-tasks-controls">
+            <button class="plane-task-btn" onclick="unloadLuggage()" id="unload-luggage-btn">
+                🧳 Bajar Valijas
+                <span class="task-cost" id="unload-luggage-cost">$300</span>
+            </button>
+            <button class="plane-task-btn" onclick="unloadPassengers()" id="unload-passengers-btn">
+                👥 Bajar Pasajeros
+                <span class="task-cost" id="unload-passengers-cost">$500</span>
+            </button>
+            <button class="plane-task-btn" onclick="refuelPlaneTask()" id="refuel-task-btn">
+                ⛽ Cargar Combustible
+                <span class="task-cost" id="refuel-task-cost">$800</span>
+            </button>
+            <button class="plane-task-btn" onclick="chargeBattery()" id="charge-battery-btn">
+                🔋 Cargar Batería
+                <span class="task-cost" id="charge-battery-cost">$400</span>
+            </button>
+            <button class="plane-task-btn" onclick="performMaintenance()" id="maintenance-task-btn">
+                🔧 Realizar Mantenimiento
+                <span class="task-cost" id="maintenance-task-cost">$600</span>
+            </button>
+            <button class="plane-task-btn" onclick="hidePlaneTasks()" id="close-tasks-btn">
+                ❌ Cerrar
             </button>
         </div>
         
@@ -863,6 +954,25 @@
                     <button onclick="buyVehicleFromShop('gpu')" class="w-full mt-3 bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg transition text-lg font-bold">COMPRAR</button>
                 </div>
                 
+                <div class="shop-item">
+                    <div class="shop-item-header">
+                        <div class="shop-item-image">
+                            <img src="cinta.png" alt="Cinta de Carga" onerror="this.style.display='none'; this.parentElement.innerHTML='🔋';">
+                        </div>
+                        <div>
+                            <h4 class="font-bold text-blue-400 mb-1 text-lg">🔋 CINTA DE CARGA</h4>
+                            <p class="text-sm text-slate-400">Para bajar valijas del avión</p>
+                        </div>
+                    </div>
+                    <p class="text-yellow-400 font-bold mb-3 text-lg">Precio: $3,500</p>
+                    <div class="text-sm text-slate-500 mb-1">Estadísticas:</div>
+                    <div class="text-sm mb-1">⛽ Combustible: <span class="text-red-400">24 horas</span></div>
+                    <div class="stats-bar"><div class="stats-fill bg-red-500" style="width: 100%"></div></div>
+                    <div class="text-sm mb-1">🔧 Mantenimiento: <span class="text-green-400">1 mes</span></div>
+                    <div class="stats-bar"><div class="stats-fill bg-green-500" style="width: 100%"></div></div>
+                    <button onclick="buyVehicleFromShop('cinta')" class="w-full mt-3 bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg transition text-lg font-bold">COMPRAR</button>
+                </div>
+                
                 <div class="shop-section-title">🏗️ EDIFICIOS</div>
                 
                 <div class="shop-item">
@@ -982,6 +1092,10 @@
         // Historial de acciones para deshacer
         let actionHistory = [];
         const MAX_HISTORY = 20;
+        
+        // Cinta de carga activa
+        let activeBeltLoader = null;
+        let beltLoaderAnimation = null;
 
         const TILE_SIZE = 8;
         const VIEW_RADIUS = 15;
@@ -1001,6 +1115,15 @@
             estacioncombustible: 15000, cuartel: 20000,
             cemento: 1500,
             remove_lines: 0
+        };
+        
+        // Costos de tareas del avión
+        const TASK_COSTS = {
+            unload_luggage: 300,
+            unload_passengers: 500,
+            refuel: 800,
+            charge_battery: 400,
+            maintenance: 600
         };
 
         const textureLoader = new THREE.TextureLoader();
@@ -1050,6 +1173,16 @@
                 case 'plane_landing':
                     // Revertir aterrizaje (no se puede, solo notificación)
                     showNotification("No se puede revertir aterrizaje");
+                    break;
+                    
+                case 'plane_task':
+                    // Revertir tarea de avión
+                    if (lastAction.task === 'unload_luggage' || lastAction.task === 'unload_passengers') {
+                        showNotification(`No se puede revertir: ${lastAction.task}`);
+                    } else {
+                        updateMoney(TASK_COSTS[lastAction.task]);
+                        showNotification(`Deshecho: ${lastAction.task} revertido`);
+                    }
                     break;
             }
             
@@ -1271,8 +1404,7 @@
             const takeoffBtn = document.getElementById('takeoff-btn');
             const runwayBtn = document.getElementById('runway-btn');
             const parkingBtn = document.getElementById('parking-btn');
-            const refuelBtn = document.getElementById('refuel-btn');
-            const maintainBtn = document.getElementById('maintain-btn');
+            const tasksBtn = document.getElementById('tasks-btn');
             
             // Verificar si puede despegar
             const canTakeoff = canPlaneTakeoff(plane);
@@ -1289,15 +1421,9 @@
             parkingBtn.disabled = isParked;
             parkingBtn.classList.toggle('disabled', isParked);
             
-            // Verificar si necesita combustible
-            const needsFuel = plane.data.stats.fuel < 100;
-            refuelBtn.disabled = !needsFuel;
-            refuelBtn.classList.toggle('disabled', !needsFuel);
-            
-            // Verificar si necesita mantenimiento
-            const needsMaintenance = plane.data.stats.maintenance < 100;
-            maintainBtn.disabled = !needsMaintenance;
-            maintainBtn.classList.toggle('disabled', !needsMaintenance);
+            // Habilitar tareas solo si está estacionado
+            tasksBtn.disabled = !isParked;
+            tasksBtn.classList.toggle('disabled', !isParked);
         }
 
         function hidePlaneControls() {
@@ -1306,9 +1432,65 @@
             selectedPlane = null;
         }
 
+        function showPlaneTasks() {
+            if (!selectedPlane) return;
+            
+            document.getElementById('plane-tasks-controls').style.display = 'flex';
+            document.getElementById('plane-controls').style.display = 'none';
+            
+            // Actualizar estado de los botones de tareas
+            updatePlaneTasksButtons();
+        }
+
+        function hidePlaneTasks() {
+            document.getElementById('plane-tasks-controls').style.display = 'none';
+            document.getElementById('plane-controls').style.display = 'flex';
+        }
+
+        function updatePlaneTasksButtons() {
+            if (!selectedPlane) return;
+            
+            const stats = selectedPlane.data.stats;
+            
+            // Verificar si necesita bajar valijas (siempre disponible cuando está estacionado)
+            const unloadLuggageBtn = document.getElementById('unload-luggage-btn');
+            unloadLuggageBtn.disabled = false;
+            unloadLuggageBtn.classList.remove('disabled');
+            
+            // Verificar si necesita bajar pasajeros (siempre disponible cuando está estacionado)
+            const unloadPassengersBtn = document.getElementById('unload-passengers-btn');
+            unloadPassengersBtn.disabled = false;
+            unloadPassengersBtn.classList.remove('disabled');
+            
+            // Verificar si necesita combustible (>25% gastado)
+            const needsFuel = stats.fuel < 75;
+            const refuelTaskBtn = document.getElementById('refuel-task-btn');
+            refuelTaskBtn.disabled = !needsFuel;
+            refuelTaskBtn.classList.toggle('disabled', !needsFuel);
+            
+            // Verificar si necesita carga de batería (>25% gastado)
+            const needsBattery = stats.energy < 75;
+            const chargeBatteryBtn = document.getElementById('charge-battery-btn');
+            chargeBatteryBtn.disabled = !needsBattery;
+            chargeBatteryBtn.classList.toggle('disabled', !needsBattery);
+            
+            // Verificar si necesita mantenimiento (>25% gastado)
+            const needsMaintenance = stats.maintenance < 75;
+            const maintenanceTaskBtn = document.getElementById('maintenance-task-btn');
+            maintenanceTaskBtn.disabled = !needsMaintenance;
+            maintenanceTaskBtn.classList.toggle('disabled', !needsMaintenance);
+            
+            // Actualizar costos
+            document.getElementById('unload-luggage-cost').textContent = `$${TASK_COSTS.unload_luggage}`;
+            document.getElementById('unload-passengers-cost').textContent = `$${TASK_COSTS.unload_passengers}`;
+            document.getElementById('refuel-task-cost').textContent = `$${TASK_COSTS.refuel}`;
+            document.getElementById('charge-battery-cost').textContent = `$${TASK_COSTS.charge_battery}`;
+            document.getElementById('maintenance-task-cost').textContent = `$${TASK_COSTS.maintenance}`;
+        }
+
         function canPlaneTakeoff(plane) {
             // Verificar que todas las barras estén completas
-            if (plane.data.stats.fuel < 100 || plane.data.stats.maintenance < 100) {
+            if (plane.data.stats.fuel < 100 || plane.data.stats.maintenance < 100 || plane.data.stats.energy < 100) {
                 return false;
             }
             
@@ -1369,7 +1551,7 @@
             if (!selectedPlane) return;
             
             if (!canPlaneTakeoff(selectedPlane)) {
-                showNotification("No puede despegar: Verifique combustible, mantenimiento o pista disponible");
+                showNotification("No puede despegar: Verifique combustible, batería, mantenimiento o pista disponible");
                 return;
             }
             
@@ -1435,43 +1617,753 @@
             hidePlaneControls();
         }
 
-        function refuelPlane() {
+        // --- Tareas del Avión ---
+        function unloadLuggage() {
             if (!selectedPlane) return;
             
-            const cost = 500; // Costo de repostar
-            if (money >= cost) {
-                selectedPlane.data.stats.fuel = 100;
-                updateMoney(-cost);
-                showNotification(`Avión repostado por $${cost}`);
-                saveGame();
-            } else {
-                showNotification(`Dinero insuficiente para repostar ($${cost} necesarios)`);
+            const cost = TASK_COSTS.unload_luggage;
+            if (money < cost) {
+                showNotification(`Dinero insuficiente para bajar valijas ($${cost} necesarios)`);
+                return;
             }
             
-            hidePlaneControls();
+            // Verificar si hay cinta de carga disponible
+            const beltLoader = findAvailableBeltLoader();
+            if (!beltLoader) {
+                showNotification("No hay cinta de carga disponible para bajar valijas");
+                return;
+            }
+            
+            updateMoney(-cost);
+            
+            // Mover cinta de carga al avión
+            beltLoader.targetX = selectedPlane.mesh.position.x - 5;
+            beltLoader.targetZ = selectedPlane.mesh.position.z;
+            
+            // Animación de descarga de valijas
+            animateBeltUnloading(selectedPlane, beltLoader);
+            
+            saveActionToHistory({
+                type: 'plane_task',
+                task: 'unload_luggage',
+                planeId: selectedPlane.data.id,
+                cost: cost,
+                timestamp: gameTime
+            });
+            
+            showNotification(`Valijas bajadas por $${cost}`);
+            hidePlaneTasks();
+            saveGame();
         }
 
-        function maintainPlane() {
+        function unloadPassengers() {
             if (!selectedPlane) return;
             
-            const cost = 800; // Costo de mantenimiento
-            if (money >= cost) {
-                selectedPlane.data.stats.maintenance = 100;
-                updateMoney(-cost);
-                showNotification(`Mantenimiento completado por $${cost}`);
-                saveGame();
-            } else {
+            const cost = TASK_COSTS.unload_passengers;
+            if (money < cost) {
+                showNotification(`Dinero insuficiente para bajar pasajeros ($${cost} necesarios)`);
+                return;
+            }
+            
+            updateMoney(-cost);
+            
+            // Simular tiempo de descarga
+            setTimeout(() => {
+                showNotification("Pasajeros bajados exitosamente");
+            }, 1000);
+            
+            saveActionToHistory({
+                type: 'plane_task',
+                task: 'unload_passengers',
+                planeId: selectedPlane.data.id,
+                cost: cost,
+                timestamp: gameTime
+            });
+            
+            showNotification(`Pasajeros bajados por $${cost}`);
+            hidePlaneTasks();
+            saveGame();
+        }
+
+        function refuelPlaneTask() {
+            if (!selectedPlane) return;
+            
+            const cost = TASK_COSTS.refuel;
+            if (money < cost) {
+                showNotification(`Dinero insuficiente para cargar combustible ($${cost} necesarios)`);
+                return;
+            }
+            
+            updateMoney(-cost);
+            
+            // Cargar combustible al 100%
+            selectedPlane.data.stats.fuel = 100;
+            
+            saveActionToHistory({
+                type: 'plane_task',
+                task: 'refuel',
+                planeId: selectedPlane.data.id,
+                cost: cost,
+                timestamp: gameTime
+            });
+            
+            showNotification(`Combustible cargado al 100% por $${cost}`);
+            hidePlaneTasks();
+            saveGame();
+        }
+
+        function chargeBattery() {
+            if (!selectedPlane) return;
+            
+            const cost = TASK_COSTS.charge_battery;
+            if (money < cost) {
+                showNotification(`Dinero insuficiente para cargar batería ($${cost} necesarios)`);
+                return;
+            }
+            
+            updateMoney(-cost);
+            
+            // Cargar batería al 100%
+            selectedPlane.data.stats.energy = 100;
+            
+            saveActionToHistory({
+                type: 'plane_task',
+                task: 'charge_battery',
+                planeId: selectedPlane.data.id,
+                cost: cost,
+                timestamp: gameTime
+            });
+            
+            showNotification(`Batería cargada al 100% por $${cost}`);
+            hidePlaneTasks();
+            saveGame();
+        }
+
+        function performMaintenance() {
+            if (!selectedPlane) return;
+            
+            const cost = TASK_COSTS.maintenance;
+            if (money < cost) {
                 showNotification(`Dinero insuficiente para mantenimiento ($${cost} necesarios)`);
+                return;
             }
             
-            hidePlaneControls();
+            updateMoney(-cost);
+            
+            // Realizar mantenimiento al 100%
+            selectedPlane.data.stats.maintenance = 100;
+            
+            saveActionToHistory({
+                type: 'plane_task',
+                task: 'maintenance',
+                planeId: selectedPlane.data.id,
+                cost: cost,
+                timestamp: gameTime
+            });
+            
+            showNotification(`Mantenimiento completado al 100% por $${cost}`);
+            hidePlaneTasks();
+            saveGame();
         }
 
-        // --- Confirm Dialog ---
+        // --- Funciones para mover y rotar edificios ---
+        function rotateBuilding(degrees) {
+            if (!selectedBuilding) return;
+            
+            buildingRotation += degrees * (Math.PI / 180);
+            selectedBuilding.mesh.rotation.y = buildingRotation;
+            
+            showNotification(`Edificio rotado ${degrees}°`);
+        }
+
+        function moveBuildingUp() {
+            if (!selectedBuilding) return;
+            
+            selectedBuilding.mesh.position.z -= TILE_SIZE;
+            showNotification("Edificio movido hacia arriba");
+        }
+
+        function moveBuildingDown() {
+            if (!selectedBuilding) return;
+            
+            selectedBuilding.mesh.position.z += TILE_SIZE;
+            showNotification("Edificio movido hacia abajo");
+        }
+
+        function moveBuildingLeft() {
+            if (!selectedBuilding) return;
+            
+            selectedBuilding.mesh.position.x -= TILE_SIZE;
+            showNotification("Edificio movido hacia la izquierda");
+        }
+
+        function moveBuildingRight() {
+            if (!selectedBuilding) return;
+            
+            selectedBuilding.mesh.position.x += TILE_SIZE;
+            showNotification("Edificio movido hacia la derecha");
+        }
+
+        function confirmBuildingMove() {
+            if (!selectedBuilding) return;
+            
+            // Guardar la nueva posición en el historial
+            saveActionToHistory({
+                type: 'building_move',
+                buildingType: selectedBuilding.type,
+                oldPosition: buildingOriginalPosition,
+                newPosition: selectedBuilding.mesh.position,
+                oldRotation: 0,
+                newRotation: buildingRotation
+            });
+            
+            hideBuildingControls();
+            showNotification("Ubicación del edificio confirmada");
+            saveGame();
+        }
+
+        function cancelBuildingMove() {
+            if (!selectedBuilding) return;
+            
+            // Restaurar posición original
+            selectedBuilding.mesh.position.copy(buildingOriginalPosition);
+            selectedBuilding.mesh.rotation.y = 0;
+            buildingRotation = 0;
+            
+            hideBuildingControls();
+            showNotification("Movimiento del edificio cancelado");
+        }
+
+        function showBuildingControls(building) {
+            selectedBuilding = building;
+            buildingOriginalPosition = building.mesh.position.clone();
+            buildingRotation = building.mesh.rotation.y;
+            
+            document.getElementById('building-controls').style.display = 'flex';
+            document.getElementById('back-btn').style.display = 'block';
+        }
+
+        function hideBuildingControls() {
+            document.getElementById('building-controls').style.display = 'none';
+            document.getElementById('back-btn').style.display = 'none';
+            selectedBuilding = null;
+            buildingOriginalPosition = null;
+            buildingRotation = 0;
+        }
+
+        // --- Funciones para la cinta de carga ---
+        function findAvailableBeltLoader() {
+            for (const vehicle of localVehicles) {
+                if (vehicle.type === 'cinta' && !vehicle.isBusy) {
+                    return vehicle;
+                }
+            }
+            return null;
+        }
+
+        function animateBeltUnloading(plane, beltLoader) {
+            beltLoader.isBusy = true;
+            
+            // Crear indicador visual de la cinta
+            const beltIndicator = document.createElement('div');
+            beltIndicator.className = 'belt-loader';
+            beltIndicator.style.left = `${beltLoader.mesh.position.x}px`;
+            beltIndicator.style.top = `${beltLoader.mesh.position.z}px`;
+            document.body.appendChild(beltIndicator);
+            
+            // Animación de movimiento hacia el avión
+            let progress = 0;
+            const duration = 2000; // 2 segundos
+            
+            const animate = () => {
+                progress += 16; // aproximadamente 60fps
+                const t = progress / duration;
+                
+                if (t < 1) {
+                    // Mover hacia el avión
+                    const x = beltLoader.mesh.position.x + (plane.mesh.position.x - beltLoader.mesh.position.x - 3) * t;
+                    const z = beltLoader.mesh.position.z + (plane.mesh.position.z - beltLoader.mesh.position.z) * t;
+                    
+                    beltIndicator.style.left = `${x}px`;
+                    beltIndicator.style.top = `${z}px`;
+                    
+                    requestAnimationFrame(animate);
+                } else {
+                    // Finalizar animación
+                    document.body.removeChild(beltIndicator);
+                    beltLoader.isBusy = false;
+                    
+                    // Devolver la cinta a su posición original
+                    setTimeout(() => {
+                        beltLoader.mesh.position.x = beltLoader.originalPosition.x;
+                        beltLoader.mesh.position.z = beltLoader.originalPosition.z;
+                    }, 1000);
+                }
+            };
+            
+            animate();
+        }
+
+        // --- Funciones auxiliares ---
+        function updateMoney(amount) {
+            money += amount;
+            updateMoneyDisplay();
+            
+            // Efecto visual para cargos
+            if (amount < 0) {
+                const feedback = document.getElementById('fee-feedback');
+                feedback.textContent = `${amount}$`;
+                feedback.style.opacity = '1';
+                
+                setTimeout(() => {
+                    feedback.style.opacity = '0';
+                }, 1500);
+            }
+        }
+
+        function updateMoneyDisplay() {
+            document.getElementById('money-val').textContent = `$${money.toLocaleString('es-ES')}`;
+        }
+
+        function showNotification(message) {
+            const notif = document.getElementById('notif');
+            notif.textContent = message;
+            notif.style.opacity = '1';
+            
+            setTimeout(() => {
+                notif.style.opacity = '0';
+            }, 3000);
+        }
+
+        function deselectAll() {
+            hidePlaneControls();
+            hidePlaneTasks();
+            hideBuildingControls();
+            selectedEntity = null;
+            selectedPlane = null;
+            selectedBuilding = null;
+            document.getElementById('back-btn').style.display = 'none';
+            showNotification("Selección cancelada");
+        }
+
+        function findAvailableParkingSpot() {
+            // Crear posiciones de estacionamiento si no existen
+            if (parkingPositions.length === 0) {
+                for (let i = 0; i < 5; i++) {
+                    parkingPositions.push({
+                        x: 50 + i * 15,
+                        z: 30,
+                        occupied: false
+                    });
+                }
+            }
+            
+            // Encontrar posición libre
+            for (const spot of parkingPositions) {
+                if (!spot.occupied) {
+                    spot.occupied = true;
+                    return spot;
+                }
+            }
+            return null;
+        }
+
+        // --- Inicialización del juego ---
+        function init() {
+            // Crear escena
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x87CEEB);
+            scene.fog = new THREE.FogExp2(0x87CEEB, 0.0003);
+            
+            // Crear cámara
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 60, 60);
+            camera.lookAt(0, 0, 0);
+            
+            // Crear renderer
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+            
+            // Controles de órbita
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            controls.minDistance = 20;
+            controls.maxDistance = 200;
+            
+            // Raycaster para detección de clics
+            raycaster = new THREE.Raycaster();
+            mouse = new THREE.Vector2();
+            
+            // Luces
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+            scene.add(ambientLight);
+            
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
+            directionalLight.position.set(10, 20, 5);
+            scene.add(directionalLight);
+            
+            // Crear terreno inicial
+            createInitialTerrain();
+            
+            // Cargar juego guardado
+            loadGame();
+            
+            // Iniciar bucle de animación
+            animate();
+            
+            // Event listeners
+            window.addEventListener('resize', onWindowResize);
+            renderer.domElement.addEventListener('click', onCanvasClick);
+            
+            // Iniciar desde el lobby
+            document.getElementById('start-btn').addEventListener('click', startGame);
+        }
+
+        function createInitialTerrain() {
+            // Crear terreno base
+            for (let x = -VIEW_RADIUS; x <= VIEW_RADIUS; x++) {
+                for (let z = -VIEW_RADIUS; z <= VIEW_RADIUS; z++) {
+                    createTile(x, z, 'grass');
+                }
+            }
+        }
+
+        function createTile(x, z, type) {
+            const geometry = new THREE.PlaneGeometry(TILE_SIZE, TILE_SIZE);
+            const material = new THREE.MeshLambertMaterial({ 
+                color: COLORS[type] || COLORS.grass 
+            });
+            
+            const tile = new THREE.Mesh(geometry, material);
+            tile.rotation.x = -Math.PI / 2;
+            tile.position.set(x * TILE_SIZE, 0, z * TILE_SIZE);
+            
+            // Guardar información en userData
+            tile.userData = {
+                type: type,
+                gridX: x,
+                gridZ: z
+            };
+            
+            scene.add(tile);
+            gridMap.set(`${x},${z}`, tile);
+            
+            return tile;
+        }
+
+        function updateTileUI(x, z, newType) {
+            const key = `${x},${z}`;
+            const tile = gridMap.get(key);
+            
+            if (tile) {
+                const oldType = tile.userData.type;
+                tile.userData.type = newType;
+                tile.material.color.set(COLORS[newType] || COLORS.grass);
+                
+                // Guardar en historial
+                saveActionToHistory({
+                    type: 'build',
+                    x: x,
+                    z: z,
+                    oldType: oldType,
+                    newType: newType
+                });
+            }
+        }
+
+        function spawnPlayerPlane(type) {
+            const planeId = 'plane_' + Date.now();
+            
+            const geometry = new THREE.BoxGeometry(6, 1, 4);
+            const material = new THREE.MeshLambertMaterial({ 
+                color: type === 'aerolineas' ? 0x0000ff : 
+                       type === 'flybondi' ? 0xff0000 : 0xffffff 
+            });
+            
+            const planeMesh = new THREE.Mesh(geometry, material);
+            planeMesh.position.set(0, 1, 0);
+            scene.add(planeMesh);
+            
+            const planeData = {
+                id: planeId,
+                type: type,
+                state: 'PARKED',
+                stats: {
+                    fuel: 100,
+                    energy: 100,
+                    maintenance: 100
+                }
+            };
+            
+            airplanes.set(planeId, {
+                mesh: planeMesh,
+                data: planeData
+            });
+            
+            showNotification(`Avión ${type} comprado y listo para operar`);
+            saveGame();
+        }
+
+        function placeBuilding(type) {
+            const buildingId = 'building_' + Date.now();
+            
+            // Crear geometría según el tipo de edificio
+            let geometry, color;
+            
+            switch(type) {
+                case 'estacioncombustible':
+                    geometry = new THREE.BoxGeometry(10, 4, 8);
+                    color = 0xffaa00;
+                    break;
+                case 'cuartel':
+                    geometry = new THREE.BoxGeometry(12, 6, 10);
+                    color = 0xff0000;
+                    break;
+                default:
+                    geometry = new THREE.BoxGeometry(8, 4, 8);
+                    color = 0x888888;
+            }
+            
+            const material = new THREE.MeshLambertMaterial({ color: color });
+            const buildingMesh = new THREE.Mesh(geometry, material);
+            
+            // Posicionar cerca del centro
+            buildingMesh.position.set(30, 2, 30);
+            scene.add(buildingMesh);
+            
+            const buildingData = {
+                id: buildingId,
+                type: type,
+                stats: {
+                    efficiency: 100
+                }
+            };
+            
+            buildings.push({
+                mesh: buildingMesh,
+                data: buildingData,
+                type: type
+            });
+            
+            showNotification(`Edificio ${type} construido`);
+        }
+
+        function buyVehicle(type) {
+            // Esta función sería para comprar vehículos terrestres
+            showNotification(`Vehículo ${type} comprado (implementación pendiente)`);
+        }
+
+        function setTool(tool) {
+            currentTool = tool;
+            
+            // Actualizar botones activos
+            document.querySelectorAll('.tool-btn').forEach(btn => {
+                btn.classList.remove('active-tool');
+            });
+            
+            // Activar el botón correspondiente
+            const btnId = 'btn-' + tool;
+            const btn = document.getElementById(btnId);
+            if (btn) {
+                btn.classList.add('active-tool');
+            }
+            
+            showNotification(`Herramienta: ${tool}`);
+        }
+
+        function onCanvasClick(event) {
+            // Calcular posición del mouse
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+            
+            raycaster.setFromCamera(mouse, camera);
+            
+            // Verificar clic en aviones
+            const planeIntersects = [];
+            airplanes.forEach(plane => {
+                planeIntersects.push(plane.mesh);
+            });
+            
+            const planeResults = raycaster.intersectObjects(planeIntersects);
+            
+            if (planeResults.length > 0) {
+                // Clic en un avión
+                const planeMesh = planeResults[0].object;
+                let selectedPlaneObj = null;
+                
+                airplanes.forEach(plane => {
+                    if (plane.mesh === planeMesh) {
+                        selectedPlaneObj = plane;
+                    }
+                });
+                
+                if (selectedPlaneObj) {
+                    showPlaneControls(selectedPlaneObj);
+                    return;
+                }
+            }
+            
+            // Verificar clic en edificios
+            const buildingIntersects = buildings.map(b => b.mesh);
+            const buildingResults = raycaster.intersectObjects(buildingIntersects);
+            
+            if (buildingResults.length > 0) {
+                // Clic en un edificio
+                const buildingMesh = buildingResults[0].object;
+                let selectedBuildingObj = null;
+                
+                buildings.forEach(building => {
+                    if (building.mesh === buildingMesh) {
+                        selectedBuildingObj = building;
+                    }
+                });
+                
+                if (selectedBuildingObj) {
+                    showBuildingControls(selectedBuildingObj);
+                    return;
+                }
+            }
+            
+            // Verificar clic en el suelo
+            const groundResults = raycaster.intersectObjects(Array.from(gridMap.values()));
+            
+            if (groundResults.length > 0) {
+                const tile = groundResults[0].object;
+                const gridX = tile.userData.gridX;
+                const gridZ = tile.userData.gridZ;
+                
+                // Manejar diferentes herramientas
+                switch(currentTool) {
+                    case 'runway':
+                    case 'road':
+                    case 'platform':
+                    case 'cemento':
+                    case 'torre':
+                        // Construir si hay suficiente dinero
+                        if (money >= PRICES[currentTool]) {
+                            updateMoney(-PRICES[currentTool]);
+                            updateTileUI(gridX, gridZ, currentTool);
+                            saveGame();
+                        } else {
+                            showNotification(`¡Dinero insuficiente! Necesitas $${PRICES[currentTool]}`);
+                        }
+                        break;
+                        
+                    case 'grass':
+                        // Demoler (50% de reembolso)
+                        const oldType = tile.userData.type;
+                        if (oldType !== 'grass') {
+                            const refund = PRICES[oldType] * 0.5;
+                            updateMoney(refund);
+                            updateTileUI(gridX, gridZ, 'grass');
+                            
+                            saveActionToHistory({
+                                type: 'demolish',
+                                x: gridX,
+                                z: gridZ,
+                                oldType: oldType
+                            });
+                            
+                            saveGame();
+                        }
+                        break;
+                }
+            }
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            // Actualizar tiempo del juego
+            updateGameTime();
+            
+            // Actualizar controles
+            controls.update();
+            
+            // Actualizar aviones
+            updatePlanes();
+            
+            // Renderizar
+            renderer.render(scene, camera);
+        }
+
+        function updatePlanes() {
+            airplanes.forEach(plane => {
+                const data = plane.data;
+                const mesh = plane.mesh;
+                
+                switch(data.state) {
+                    case 'MOVING':
+                    case 'MOVING_TO_PARKING':
+                        // Mover hacia el objetivo
+                        if (data.targetX !== undefined && data.targetZ !== undefined) {
+                            const dx = data.targetX - mesh.position.x;
+                            const dz = data.targetZ - mesh.position.z;
+                            const distance = Math.sqrt(dx * dx + dz * dz);
+                            
+                            if (distance > 0.5) {
+                                // Mover gradualmente
+                                mesh.position.x += dx * 0.05;
+                                mesh.position.z += dz * 0.05;
+                                
+                                // Rotar hacia la dirección
+                                const targetRotation = Math.atan2(dx, dz);
+                                mesh.rotation.y = THREE.MathUtils.lerp(mesh.rotation.y, targetRotation, 0.1);
+                            } else {
+                                // Llegó al destino
+                                if (data.state === 'MOVING_TO_PARKING') {
+                                    data.state = 'PARKED';
+                                    showNotification("Avión estacionado exitosamente");
+                                } else {
+                                    data.state = 'GROUND';
+                                }
+                            }
+                        }
+                        break;
+                        
+                    case 'TAKEOFF':
+                        // Animación de despegue
+                        mesh.position.y += 0.2;
+                        mesh.position.x += 0.5;
+                        
+                        if (mesh.position.y > 50) {
+                            // Avión ha despegado
+                            airplanes.delete(data.id);
+                            scene.remove(mesh);
+                            runwayOccupied = false;
+                            showNotification("¡Avión despegó exitosamente!");
+                        }
+                        break;
+                }
+                
+                // Degradar estadísticas con el tiempo
+                if (data.state === 'PARKED' || data.state === 'GROUND') {
+                    // Degradar lentamente mientras está en tierra
+                    data.stats.fuel = Math.max(0, data.stats.fuel - 0.001 * timeSpeed);
+                    data.stats.energy = Math.max(0, data.stats.energy - 0.001 * timeSpeed);
+                    data.stats.maintenance = Math.max(0, data.stats.maintenance - 0.0005 * timeSpeed);
+                }
+            });
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function startGame() {
+            document.getElementById('lobby').style.display = 'none';
+            document.getElementById('game-ui').style.display = 'block';
+            showNotification("¡Bienvenido al Aeropuerto! Comienza construyendo pistas y comprando aviones.");
+        }
+
         function showRestartConfirmation() {
-            document.getElementById('confirm-title').innerText = '¿Confirmar Restart?';
-            document.getElementById('confirm-message').innerText = '¿Estás seguro de que quieres reiniciar el juego? Se perderá todo el progreso.';
             document.getElementById('confirm-dialog').style.display = 'block';
+            document.getElementById('confirm-title').textContent = '¿Confirmar Restart?';
+            document.getElementById('confirm-message').textContent = '¿Estás seguro de que quieres reiniciar el juego? Se perderá todo el progreso.';
         }
 
         function closeConfirmDialog() {
@@ -1479,907 +2371,13 @@
         }
 
         function confirmRestart() {
-            // Limpiar localStorage
+            // Reiniciar juego
             localStorage.removeItem('airportTycoonSave');
-            
-            // Recargar la página
             location.reload();
         }
 
-        // --- Deseleccionar todo ---
-        function deselectAll() {
-            selectedEntity = null;
-            selectedPlane = null;
-            selectedBuilding = null;
-            isMovingBuilding = false;
-            
-            document.getElementById('building-controls').style.display = 'none';
-            document.getElementById('plane-controls').style.display = 'none';
-            document.getElementById('back-btn').style.display = 'none';
-            
-            showNotification("Selección cancelada");
-        }
-
-        // --- Borrar líneas amarillas ---
-        function removeYellowLines(x, z) {
-            const mesh = gridMap.get(`${x},${z}`);
-            if (!mesh) return;
-            
-            // Guardar en historial
-            saveActionToHistory({
-                type: 'remove_lines',
-                x: x,
-                z: z,
-                tileType: mesh.userData.type,
-                timestamp: gameTime
-            });
-            
-            // Remover decoraciones
-            if (mesh.userData.deco) {
-                scene.remove(mesh.userData.deco);
-                mesh.userData.deco = null;
-            }
-            
-            showNotification("Líneas amarillas removidas");
-            saveGame();
-        }
-
-        // --- Inicialización ---
-        function init() {
-            document.getElementById('start-btn').onclick = () => {
-                document.getElementById('lobby').style.display = 'none';
-                document.getElementById('game-ui').style.display = 'block';
-                initGame();
-            };
-            setupDraggableMenu();
-            loadGame();
-        }
-
-        function initGame() {
-            setupThree();
-            if (db) setupNetworking();
-            animate();
-            setInterval(gameLogicalTick, 1000); 
-            setInterval(maybeSpawnPlane, 18000);
-            updateTimeDisplay();
-            updateMoneyDisplay();
-            updateTimeSpeedButtons();
-        }
-
-        function setupThree() {
-            scene = new THREE.Scene();
-            scene.background = new THREE.Color(isDayTime ? 0x87CEEB : 0x020617);
-            scene.fog = new THREE.FogExp2(isDayTime ? 0x87CEEB : 0x020617, isDayTime ? 0.0003 : 0.0005);
-
-            camera = new THREE.PerspectiveCamera(30, window.innerWidth / window.innerHeight, 1, 4000);
-            camera.position.set(250, 250, 250); 
-            camera.lookAt(0, 0, 0);
-
-            renderer = new THREE.WebGLRenderer({ antialias: true });
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.shadowMap.enabled = true;
-            document.body.appendChild(renderer.domElement);
-
-            controls = new THREE.OrbitControls(camera, renderer.domElement);
-            controls.enableDamping = true;
-            controls.enableRotate = false;
-            controls.screenSpacePanning = true;
-            
-            // Configurar controles táctiles para móviles
-            controls.enablePan = true;
-            controls.enableZoom = true;
-            controls.touchZoomSpeed = 0.5;
-            controls.panSpeed = 0.5;
-
-            const sun = new THREE.DirectionalLight(0xffffff, 1.5);
-            sun.position.set(100, 300, 100);
-            scene.add(sun);
-            scene.add(new THREE.AmbientLight(0xffffff, 0.6));
-
-            raycaster = new THREE.Raycaster();
-            mouse = new THREE.Vector2();
-
-            window.addEventListener('resize', () => {
-                camera.aspect = window.innerWidth / window.innerHeight;
-                camera.updateProjectionMatrix();
-                renderer.setSize(window.innerWidth, window.innerHeight);
-            });
-            
-            // Eventos táctiles para móviles
-            renderer.domElement.addEventListener('touchstart', onTouchStart, { passive: false });
-            renderer.domElement.addEventListener('touchmove', onTouchMove, { passive: false });
-            renderer.domElement.addEventListener('touchend', onTouchEnd, { passive: false });
-            
-            // Eventos de ratón
-            renderer.domElement.addEventListener('pointerdown', onPointerDown);
-        }
-
-        function setupNetworking() {
-            onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'world_tiles'), (snap) => {
-                snap.docChanges().forEach(change => {
-                    const d = change.doc.data();
-                    updateTileUI(d.x, d.z, d.type);
-                    refreshNeighbors(d.x, d.z);
-                });
-            });
-        }
-
-        function refreshNeighbors(x, z) {
-            [[0,1],[0,-1],[1,0],[-1,0]].forEach(([dx,dz]) => {
-                const n = gridMap.get(`${x+dx},${z+dz}`);
-                if(n && (n.userData.type === 'road' || n.userData.type === 'platform' || n.userData.type === 'cemento')) {
-                    updateTileUI(x+dx, z+dz, n.userData.type);
-                }
-            });
-        }
-
-        // --- Utilidades de Gráficos ---
-        function createEntitySprite(texturePath, size = 12) {
-            const texture = textureLoader.load(texturePath);
-            const mat = new THREE.SpriteMaterial({ map: texture, transparent: true });
-            const sprite = new THREE.Sprite(mat);
-            sprite.scale.set(size, size, 1);
-            sprite.center.set(0.5, 0); 
-            return sprite;
-        }
-
-        // --- Generación de Caminos con Curvas ---
-        function createSmartRoadLines(x, z) {
-            const group = new THREE.Group();
-            const mat = new THREE.MeshBasicMaterial({ color: 0xfacc15 });
-            const thickness = 0.4;
-            const radius = TILE_SIZE / 2;
-
-            const check = (dx, dz) => {
-                const n = gridMap.get(`${x+dx},${z+dz}`);
-                return n && (n.userData.type === 'road' || n.userData.type === 'platform' || n.userData.type === 'runway' || n.userData.type === 'cemento');
-            };
-
-            const N = check(0, -1), S = check(0, 1), E = check(1, 0), W = check(-1, 0);
-            const count = [N, S, E, W].filter(v => v).length;
-
-            if (count === 2 && ((N && S) || (E && W))) {
-                // Rectas
-                const geo = new THREE.PlaneGeometry(N||S ? thickness : TILE_SIZE, N||S ? TILE_SIZE : thickness);
-                const line = new THREE.Mesh(geo, mat);
-                line.rotation.x = -Math.PI/2; line.position.y = 0.06;
-                group.add(line);
-            } else if (count === 2) {
-                // CURVAS REDONDEADAS
-                const arcGeo = new THREE.TorusGeometry(radius, thickness/2, 8, 16, Math.PI/2);
-                const arc = new THREE.Mesh(arcGeo, mat);
-                arc.rotation.x = Math.PI/2;
-                arc.position.y = 0.06;
-                
-                if (S && E) { arc.position.set(radius, 0, radius); arc.rotation.z = Math.PI; }
-                if (S && W) { arc.position.set(-radius, 0, radius); arc.rotation.z = -Math.PI/2; }
-                if (N && W) { arc.position.set(-radius, 0, -radius); arc.rotation.z = 0; }
-                if (N && E) { arc.position.set(radius, 0, -radius); arc.rotation.z = Math.PI/2; }
-                group.add(arc);
-            } else {
-                // Intersecciones (Hub central)
-                if(N) group.add(createRect(0, -radius/2, thickness, radius, mat));
-                if(S) group.add(createRect(0, radius/2, thickness, radius, mat));
-                if(E) group.add(createRect(radius/2, 0, radius, thickness, mat));
-                if(W) group.add(createRect(-radius/2, 0, radius, thickness, mat));
-                const center = new THREE.Mesh(new THREE.CircleGeometry(thickness*0.8, 8), mat);
-                center.rotation.x = -Math.PI/2; center.position.y = 0.061; group.add(center);
-            }
-            return group;
-        }
-
-        function createRect(x, z, w, l, mat) {
-            const m = new THREE.Mesh(new THREE.PlaneGeometry(w, l), mat);
-            m.rotation.x = -Math.PI/2; m.position.set(x, 0.06, z);
-            return m;
-        }
-
-        // --- Pistas con líneas punteadas ---
-        function createRunwayLines(x, z) {
-            const group = new THREE.Group();
-            const mat = new THREE.MeshBasicMaterial({ color: 0xffffff });
-            const dashLength = 1.5;
-            const dashGap = 0.5;
-            const totalLength = TILE_SIZE;
-            const numDashes = Math.floor(totalLength / (dashLength + dashGap));
-            
-            // Líneas centrales punteadas
-            for (let i = 0; i < numDashes; i++) {
-                const dash = new THREE.Mesh(
-                    new THREE.PlaneGeometry(0.3, dashLength),
-                    mat
-                );
-                dash.rotation.x = -Math.PI/2;
-                dash.position.set(
-                    0,
-                    0.05,
-                    -totalLength/2 + i * (dashLength + dashGap) + dashLength/2
-                );
-                group.add(dash);
-            }
-            
-            // Bordes de la pista (más anchos para simular pista doble)
-            const leftBorder = new THREE.Mesh(
-                new THREE.PlaneGeometry(0.4, TILE_SIZE),
-                mat
-            );
-            leftBorder.rotation.x = -Math.PI/2;
-            leftBorder.position.set(-TILE_SIZE/2 + 0.2, 0.05, 0);
-            group.add(leftBorder);
-            
-            const rightBorder = new THREE.Mesh(
-                new THREE.PlaneGeometry(0.4, TILE_SIZE),
-                mat
-            );
-            rightBorder.rotation.x = -Math.PI/2;
-            rightBorder.position.set(TILE_SIZE/2 - 0.2, 0.05, 0);
-            group.add(rightBorder);
-            
-            return group;
-        }
-
-        function updateTileUI(x, z, type) {
-            const mesh = gridMap.get(`${x},${z}`) || createBaseTile(x, z);
-            const oldType = mesh.userData.type;
-            mesh.material.color.set(COLORS[type] || COLORS.grass);
-            mesh.userData.type = type;
-            
-            // Guardar en historial si es una construcción nueva
-            if (oldType !== type && type !== 'grass' && oldType === 'grass') {
-                saveActionToHistory({
-                    type: 'build',
-                    x: x,
-                    z: z,
-                    oldType: oldType,
-                    newType: type,
-                    timestamp: gameTime
-                });
-            }
-            
-            // Guardar en historial si es una demolición
-            if (type === 'grass' && oldType !== 'grass') {
-                saveActionToHistory({
-                    type: 'demolish',
-                    x: x,
-                    z: z,
-                    oldType: oldType,
-                    timestamp: gameTime
-                });
-            }
-            
-            if(mesh.userData.deco) scene.remove(mesh.userData.deco);
-
-            const group = new THREE.Group();
-            if(type === 'runway') {
-                group.add(createRunwayLines(x, z));
-            } else if(type === 'road' || type === 'platform' || type === 'cemento') {
-                // Solo agregar líneas si no estamos en modo borrar líneas
-                if (currentTool !== 'remove_lines') {
-                    group.add(createSmartRoadLines(x, z));
-                }
-            } else if(type === 'torre') {
-                const sprite = createEntitySprite('torre.png', 16);
-                sprite.position.y = 1; group.add(sprite);
-            } else if(type === 'terminal') {
-                const b = new THREE.Mesh(new THREE.BoxGeometry(TILE_SIZE, 14, TILE_SIZE), new THREE.MeshStandardMaterial({color: 0x1e293b}));
-                b.position.y = 7; group.add(b);
-            }
-            
-            group.position.set(x*TILE_SIZE, 0, z*TILE_SIZE);
-            scene.add(group);
-            mesh.userData.deco = group;
-        }
-
-        function createBaseTile(x, z) {
-            const geo = new THREE.PlaneGeometry(TILE_SIZE, TILE_SIZE);
-            const mat = new THREE.MeshStandardMaterial({ color: COLORS.grass });
-            const mesh = new THREE.Mesh(geo, mat);
-            mesh.rotation.x = -Math.PI / 2;
-            mesh.position.set(x * TILE_SIZE, 0, z * TILE_SIZE);
-            mesh.userData = { gridX: x, gridZ: z, type: 'grass' };
-            const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color: 0xffffff, opacity: 0.1, transparent: true }));
-            mesh.add(edges);
-            scene.add(mesh);
-            gridMap.set(`${x},${z}`, mesh);
-            return mesh;
-        }
-
-        // --- Eventos Táctiles ---
-        function onTouchStart(e) {
-            e.preventDefault();
-            if (e.touches.length === 1) {
-                const touch = e.touches[0];
-                mouse.x = (touch.clientX / window.innerWidth) * 2 - 1;
-                mouse.y = -(touch.clientY / window.innerHeight) * 2 + 1;
-                handleGridSelection();
-            }
-        }
-
-        function onTouchMove(e) {
-            e.preventDefault();
-            // Manejar movimiento de cámara
-        }
-
-        function onTouchEnd(e) {
-            e.preventDefault();
-        }
-
-        // --- Verificación de superposición de aviones ---
-        function checkPlaneCollision(planePos, radius = 10) {
-            for (const otherPlane of airplanes.values()) {
-                if (planePos.distanceTo(otherPlane.mesh.position) < radius) {
-                    return true;
-                }
-            }
-            return false;
-        }
-
-        // --- Lógica de Juego ---
-        function maybeSpawnPlane() {
-            const runways = Array.from(gridMap.values()).filter(t => t.userData.type === 'runway');
-            if (runways.length < 1 || airplanes.size > 5 || runwayOccupied) return;
-            
-            landingRunway = runways[Math.floor(Math.random()*runways.length)];
-            runwayOccupied = true;
-            
-            const id = "plane_" + Math.random().toString(36).substr(2, 6);
-            const data = { 
-                id, 
-                state: 'APPROACHING', 
-                x: landingRunway.position.x - 400, 
-                y: 150,
-                z: landingRunway.position.z, 
-                targetX: landingRunway.position.x, 
-                targetZ: landingRunway.position.z,
-                runway: landingRunway,
-                isLanding: true,
-                stats: {
-                    energy: 100,
-                    fuel: 100,
-                    maintenance: 100
-                },
-                planeType: 'avion'
-            };
-            
-            const sprite = createEntitySprite('aterriza.png', 16);
-            sprite.position.set(data.x, data.y, data.z);
-            scene.add(sprite);
-            airplanes.set(id, { mesh: sprite, data });
-        }
-
-        function spawnPlayerPlane(type) {
-            const runways = Array.from(gridMap.values()).filter(t => t.userData.type === 'runway');
-            if (runways.length === 0) {
-                showNotification("¡Necesitas una pista primero!");
-                return;
-            }
-            
-            const runway = runways[0];
-            let parkingX = runway.position.x;
-            let parkingZ = runway.position.z + 30;
-            
-            // Verificar que no haya colisión en la posición de estacionamiento
-            let attempts = 0;
-            while (checkPlaneCollision(new THREE.Vector3(parkingX, 0, parkingZ), 15) && attempts < 10) {
-                parkingZ += 20;
-                attempts++;
-            }
-            
-            if (attempts >= 10) {
-                showNotification("¡No hay espacio para estacionar el avión!");
-                return;
-            }
-            
-            const id = "player_plane_" + Math.random().toString(36).substr(2, 6);
-            const data = { 
-                id, 
-                state: 'PARKED', 
-                x: parkingX, 
-                y: 0, 
-                z: parkingZ, 
-                targetX: parkingX, 
-                targetZ: parkingZ,
-                isPlayerOwned: true,
-                stats: {
-                    energy: 100,
-                    fuel: 100,
-                    maintenance: 100
-                },
-                planeType: type
-            };
-            
-            let textureFile = type + '.png';
-            const sprite = createEntitySprite(textureFile, 16);
-            sprite.position.set(data.x, data.y, data.z);
-            scene.add(sprite);
-            airplanes.set(id, { mesh: sprite, data });
-        }
-
-        function findAvailableParkingSpot() {
-            const runways = Array.from(gridMap.values()).filter(t => t.userData.type === 'runway');
-            if (runways.length === 0) return null;
-            
-            const runway = runways[0];
-            
-            if (parkingPositions.length === 0) {
-                for (let i = 0; i < 5; i++) {
-                    parkingPositions.push({
-                        id: 'parking_' + i,
-                        x: runway.position.x + 100 + (i * 40),
-                        z: runway.position.z + 30,
-                        occupied: false
-                    });
-                }
-            }
-            
-            return parkingPositions.find(p => !Array.from(occupiedParkingSpots.values()).includes(p.id));
-        }
-
-        function buyVehicle(type) {
-            if(money < PRICES[type]) {
-                showNotification(`¡Dinero insuficiente! Necesitas $${PRICES[type]}`);
-                return;
-            }
-            updateMoney(-PRICES[type]);
-            
-            let textureFile = type + '.png';
-            const sprite = createEntitySprite(textureFile, 10);
-            sprite.position.set(controls.target.x, 0, controls.target.z);
-            scene.add(sprite);
-            
-            const stats = {
-                fuel: 100,
-                maintenance: 100
-            };
-            
-            localVehicles.push({ 
-                mesh: sprite, 
-                type, 
-                targetX: controls.target.x, 
-                targetZ: controls.target.z,
-                stats: stats
-            });
-            
-            saveGame();
-        }
-
-        function placeBuilding(type) {
-            const buildingStats = {
-                fuel: type === 'estacioncombustible' ? 100 : 0,
-                water: type === 'cuartel' ? 100 : 0,
-                maintenance: 100
-            };
-            
-            const sprite = createEntitySprite(type + '.png', 16);
-            sprite.position.set(controls.target.x, 0, controls.target.z);
-            scene.add(sprite);
-            
-            const building = {
-                mesh: sprite,
-                type: type,
-                position: { x: controls.target.x, y: 0, z: controls.target.z },
-                stats: buildingStats
-            };
-            
-            buildings.push(building);
-            
-            setTimeout(() => {
-                startBuildingMove(building);
-            }, 100);
-        }
-
-        function checkCollisions(vehicle) {
-            const vehiclePos = vehicle.mesh.position;
-            const collisionRadius = 5;
-            
-            let collisionDetected = false;
-            
-            localVehicles.forEach(other => {
-                if (other !== vehicle && other.mesh.position.distanceTo(vehiclePos) < collisionRadius) {
-                    collisionDetected = true;
-                }
-            });
-            
-            airplanes.forEach(plane => {
-                if (plane.mesh.position.distanceTo(vehiclePos) < collisionRadius) {
-                    collisionDetected = true;
-                }
-            });
-            
-            if (collisionDetected && vehicle.stats) {
-                vehicle.stats.maintenance = Math.max(0, vehicle.stats.maintenance - 50);
-                showNotification("¡COLISIÓN! Mantenimiento reducido 50%");
-            }
-            
-            return collisionDetected;
-        }
-
-        function checkRunwayOccupancy() {
-            runwayOccupied = false;
-            airplanes.forEach(plane => {
-                if (plane.data.state === 'APPROACHING' || plane.data.state === 'LANDING' || 
-                    plane.data.state === 'TAKEOFF') {
-                    runwayOccupied = true;
-                }
-            });
-        }
-
-        function gameLogicalTick() {
-            maintenanceTick++;
-            gameTime++;
-            
-            updateGameTime();
-            
-            if (gameTime % 60 === 0) {
-                const towers = Array.from(gridMap.values()).filter(t => t.userData.type === 'torre');
-                if (towers.length > 0) {
-                    updateMoney(-1000 * towers.length);
-                    showNotification(`-${1000 * towers.length}$ Mantenimiento Torre`);
-                }
-            }
-            
-            if (gameTime % 720 === 0) {
-                buildings.forEach(building => {
-                    if (building.type === 'estacioncombustible') {
-                        updateMoney(-2000);
-                        showNotification(`-2,000$ Combustible Estación`);
-                    }
-                });
-            }
-            
-            if (gameTime % 2880 === 0) {
-                buildings.forEach(building => {
-                    if (building.type === 'estacioncombustible' || building.type === 'cuartel') {
-                        updateMoney(-3000);
-                        showNotification(`-3,000$ Empleados/Insumos ${building.type === 'estacioncombustible' ? 'Estación' : 'Bomberos'}`);
-                    }
-                });
-            }
-            
-            updateVehicleStats();
-            checkRunwayOccupancy();
-            
-            localVehicles.forEach(vehicle => {
-                checkCollisions(vehicle);
-            });
-            
-            if (gameTime % 300 === 0) {
-                saveGame();
-            }
-        }
-
-        function updateVehicleStats() {
-            if (gameTime % 10 !== 0) return;
-            
-            localVehicles.forEach(vehicle => {
-                if (vehicle.stats) {
-                    vehicle.stats.fuel = Math.max(0, vehicle.stats.fuel - 0.5);
-                    vehicle.stats.maintenance = Math.max(0, vehicle.stats.maintenance - 0.05);
-                    
-                    if (vehicle.stats.fuel <= 0) {
-                        vehicle.targetX = vehicle.mesh.position.x;
-                        vehicle.targetZ = vehicle.mesh.position.z;
-                    }
-                }
-            });
-            
-            airplanes.forEach(plane => {
-                if (plane.data.stats) {
-                    plane.data.stats.fuel = Math.max(0, plane.data.stats.fuel - 1);
-                    plane.data.stats.maintenance = Math.max(0, plane.data.stats.maintenance - 0.2);
-                }
-            });
-        }
-
-        function animate() {
-            requestAnimationFrame(animate);
-            controls.update();
-            updateInfiniteGrid();
-
-            airplanes.forEach((p, id) => {
-                const d = p.data;
-                
-                if(d.state === 'APPROACHING') {
-                    const targetPos = new THREE.Vector3(d.targetX, 0, d.targetZ);
-                    const currentPos = p.mesh.position;
-                    
-                    currentPos.lerp(new THREE.Vector3(targetPos.x, currentPos.y, targetPos.z), 0.02);
-                    
-                    if (currentPos.y > 0) {
-                        currentPos.y -= 1.5;
-                    }
-                    
-                    if(currentPos.distanceTo(targetPos) < 10 && currentPos.y < 5) {
-                        d.state = 'LANDING';
-                        updateMoney(1000);
-                        showNotification("+1,000$ Aterrizaje completado");
-                        
-                        // Guardar en historial
-                        saveActionToHistory({
-                            type: 'plane_landing',
-                            planeId: d.id,
-                            timestamp: gameTime
-                        });
-                    }
-                } 
-                else if(d.state === 'LANDING') {
-                    p.mesh.position.lerp(new THREE.Vector3(d.targetX, 0, d.targetZ), 0.05);
-                    if(p.mesh.position.y < 1) {
-                        d.state = 'PARKING';
-                        p.mesh.material.map = textureLoader.load(d.planeType + '.png');
-                        p.mesh.material.needsUpdate = true;
-                    }
-                } 
-                else if(d.state === 'PARKING' || d.state === 'MOVING' || d.state === 'MOVING_TO_PARKING') {
-                    const dest = new THREE.Vector3(d.targetX, 0, d.targetZ);
-                    if(p.mesh.position.distanceTo(dest) > 1.5) {
-                        const direction = new THREE.Vector3().subVectors(dest, p.mesh.position).normalize();
-                        p.mesh.position.add(direction.multiplyScalar(0.6));
-                    } else {
-                        d.state = 'PARKED';
-                        if (d.state === 'LANDING' || d.state === 'MOVING_TO_PARKING') {
-                            runwayOccupied = false;
-                        }
-                    }
-                } 
-                else if(d.state === 'TAKEOFF') {
-                    if (p.mesh.material.map?.image?.src?.includes(d.planeType)) {
-                        p.mesh.material.map = textureLoader.load('despega.png');
-                        p.mesh.material.needsUpdate = true;
-                    }
-                    
-                    p.mesh.position.x += 2; 
-                    p.mesh.position.y += 2.5;
-                    
-                    if(p.mesh.position.y > 150) { 
-                        scene.remove(p.mesh); 
-                        airplanes.delete(id); 
-                        updateMoney(1000); 
-                        showNotification("+1,000$ Despegue completado");
-                        runwayOccupied = false;
-                    }
-                }
-            });
-
-            localVehicles.forEach(v => {
-                const dest = new THREE.Vector3(v.targetX, 0, v.targetZ);
-                if(v.mesh.position.distanceTo(dest) > 1.5) {
-                    if (!v.stats || v.stats.fuel > 0) {
-                        v.mesh.position.add(new THREE.Vector3().subVectors(dest, v.mesh.position).normalize().multiplyScalar(0.7));
-                    }
-                }
-            });
-
-            renderer.render(scene, camera);
-        }
-
-        function handleGridSelection() {
-            if (!isGridSelectMode) return;
-            
-            raycaster.setFromCamera(mouse, camera);
-            const intersects = raycaster.intersectObjects(scene.children, true);
-            if(intersects.length === 0) return;
-
-            const ground = intersects.find(i => i.object.userData.gridX !== undefined);
-            if(ground) {
-                const tile = ground.object.userData;
-                selectGridCell(tile.gridX, tile.gridZ);
-            }
-        }
-
-        function onPointerDown(e) {
-            if(e.target.closest('#sidebar') || e.target.closest('#header-ui') || 
-               e.target.closest('#shop-window') || e.target.closest('#shop-btn') ||
-               e.target.closest('#shop-minimized') || e.target.closest('#time-controls') ||
-               e.target.closest('#game-controls') || e.target.closest('#building-controls') ||
-               e.target.closest('#plane-controls') || e.target.closest('#back-btn') ||
-               e.target.closest('#confirm-dialog')) return;
-            
-            mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
-            mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
-            
-            if (isGridSelectMode) {
-                handleGridSelection();
-                return;
-            }
-            
-            raycaster.setFromCamera(mouse, camera);
-            const intersects = raycaster.intersectObjects(scene.children, true);
-            if(intersects.length === 0) return;
-
-            const hit = intersects[0].object;
-            let clickedEntity = null;
-            airplanes.forEach(p => { if(hit === p.mesh) clickedEntity = p; });
-            localVehicles.forEach(v => { if(hit === v.mesh) clickedEntity = v; });
-            buildings.forEach(b => { if(hit === b.mesh) clickedEntity = b; });
-
-            if(clickedEntity) {
-                selectedEntity = clickedEntity;
-                
-                if (buildings.includes(clickedEntity) && currentTool === 'select' && !isMovingBuilding) {
-                    startBuildingMove(clickedEntity);
-                    return;
-                }
-                
-                // Si es un avión, mostrar controles de avión
-                let isPlane = false;
-                airplanes.forEach((p, id) => {
-                    if (hit === p.mesh) {
-                        isPlane = true;
-                        showPlaneControls(p);
-                        showNotification(`Avión ${id.substring(0, 8)} seleccionado`);
-                    }
-                });
-                
-                if (!isPlane) {
-                    const entityName = clickedEntity.type || (clickedEntity.data?.planeType ? 'Avión' : 'Edificio');
-                    showNotification(`${entityName.toUpperCase()} Seleccionado`);
-                }
-                return;
-            }
-
-            const ground = intersects.find(i => i.object.userData.gridX !== undefined);
-            if(ground) {
-                const tile = ground.object.userData;
-                
-                // Modo borrar líneas amarillas
-                if (currentTool === 'remove_lines') {
-                    removeYellowLines(tile.gridX, tile.gridZ);
-                    return;
-                }
-                
-                if(selectedEntity && currentTool === 'select' && !isMovingBuilding) {
-                    const isPlane = selectedEntity.data;
-                    const isVehicle = selectedEntity.type && !selectedEntity.data;
-                    const isBuilding = selectedEntity.type && buildings.includes(selectedEntity);
-                    
-                    if (isPlane) {
-                        const targetPos = new THREE.Vector3(ground.object.position.x, 0, ground.object.position.z);
-                        
-                        // Verificar colisión con otros aviones
-                        if (checkPlaneCollision(targetPos, 15)) {
-                            showNotification("¡No se puede mover ahí! Otro avión está demasiado cerca");
-                            return;
-                        }
-                        
-                        if(tile.type === 'runway') {
-                            if (runwayOccupied) {
-                                showNotification("¡Pista ocupada! Espere a que se despeje");
-                                return;
-                            }
-                            selectedEntity.data.targetX = ground.object.position.x;
-                            selectedEntity.data.targetZ = ground.object.position.z;
-                            selectedEntity.data.state = 'TAKEOFF';
-                            runwayOccupied = true;
-                        } else if(tile.type === 'platform' || tile.type === 'cemento' || tile.type === 'road') {
-                            selectedEntity.data.targetX = ground.object.position.x;
-                            selectedEntity.data.targetZ = ground.object.position.z;
-                            selectedEntity.data.state = 'MOVING';
-                        }
-                    } else if (isVehicle) {
-                        if(tile.type === 'road' || tile.type === 'platform' || tile.type === 'cemento') {
-                            selectedEntity.targetX = ground.object.position.x;
-                            selectedEntity.targetZ = ground.object.position.z;
-                        } else { 
-                            showNotification("Prohibido: Solo en Calles/Plataformas/Cemento"); 
-                        }
-                    } else if (isBuilding && !isMovingBuilding) {
-                        startBuildingMove(selectedEntity);
-                    }
-                    selectedEntity = null; 
-                    return;
-                }
-
-                if(currentTool === 'grass') {
-                    const refund = PRICES[tile.type] * 0.5;
-                    if(refund > 0) { updateMoney(refund); showNotification(`+${refund}$ Reembolso`); }
-                    updateTileUI(tile.gridX, tile.gridZ, 'grass');
-                    if(db) setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'world_tiles', `${tile.gridX}_${tile.gridZ}`), { x: tile.gridX, z: tile.gridZ, type: 'grass' });
-                } else if(currentTool !== 'select') {
-                    const cost = PRICES[currentTool];
-                    if(money >= cost) {
-                        updateMoney(-cost); updateTileUI(tile.gridX, tile.gridZ, currentTool);
-                        if(db) setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'world_tiles', `${tile.gridX}_${tile.gridZ}`), { x: tile.gridX, z: tile.gridZ, type: currentTool });
-                    }
-                }
-            }
-        }
-
-        function updateInfiniteGrid() {
-            const cx = Math.round(controls.target.x / TILE_SIZE);
-            const cz = Math.round(controls.target.z / TILE_SIZE);
-            for(let x = cx - VIEW_RADIUS; x <= cx + VIEW_RADIUS; x++) {
-                for(let z = cz - VIEW_RADIUS; z <= cz + VIEW_RADIUS; z++) {
-                    if(!gridMap.has(`${x},${z}`)) createBaseTile(x, z);
-                }
-            }
-        }
-
-        function updateMoney(amt) { 
-            money += amt; 
-            updateMoneyDisplay();
-            saveGame();
-        }
-        
-        function updateMoneyDisplay() {
-            document.getElementById('money-val').innerText = `$${Math.floor(money).toLocaleString()}`; 
-        }
-        
-        function showNotification(msg) { 
-            const n = document.getElementById('notif'); 
-            n.innerText = msg; 
-            n.style.opacity = 1; 
-            setTimeout(() => n.style.opacity = 0, 2000); 
-        }
-        
-        function showFeeFeedback(amt) { 
-            const fb = document.getElementById('fee-feedback'); 
-            fb.innerText = `-$${amt} (Mant.)`; 
-            fb.style.opacity = 1; 
-            setTimeout(() => fb.style.opacity = 0, 1000); 
-        }
-        
-        function setupDraggableMenu() {
-            const s = document.getElementById('sidebar'), h = document.getElementById('drag-handle');
-            let d = false, ox, oy;
-            const st = (e) => { 
-                d = true; 
-                const ev = e.touches?e.touches[0]:e; 
-                ox = ev.clientX-s.offsetLeft; 
-                oy = ev.clientY-s.offsetTop; 
-                s.style.transition='none'; 
-            };
-            const mv = (e) => { 
-                if(!d) return; 
-                const ev = e.touches?e.touches[0]:e; 
-                s.style.left = (ev.clientX-ox)+'px'; 
-                s.style.top = (ev.clientY-oy)+'px'; 
-                s.style.right='auto'; 
-            };
-            h.addEventListener('mousedown', st); 
-            document.addEventListener('mousemove', mv);
-            h.addEventListener('touchstart', st); 
-            document.addEventListener('touchmove', mv);
-            document.addEventListener('mouseup', () => d = false); 
-            document.addEventListener('touchend', () => d = false);
-        }
-        
-        window.setTool = (t) => { 
-            currentTool = t; 
-            document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active-tool')); 
-            document.getElementById('btn-'+t)?.classList.add('active-tool'); 
-            
-            // Ocultar controles cuando se cambia de herramienta
-            if (t !== 'select') {
-                deselectAll();
-            }
-        };
-        
-        window.openShop = openShop;
-        window.closeShop = closeShop;
-        window.minimizeShop = minimizeShop;
-        window.buyVehicleFromShop = buyVehicleFromShop;
-        window.buyBuildingFromShop = buyBuildingFromShop;
-        window.setTimeSpeed = setTimeSpeed;
-        window.rotateBuilding = rotateBuilding;
-        window.moveBuildingUp = moveBuildingUp;
-        window.moveBuildingDown = moveBuildingDown;
-        window.moveBuildingLeft = moveBuildingLeft;
-        window.moveBuildingRight = moveBuildingRight;
-        window.confirmBuildingMove = confirmBuildingMove;
-        window.cancelBuildingMove = cancelBuildingMove;
-        window.initiateTakeoff = initiateTakeoff;
-        window.movePlaneToRunway = movePlaneToRunway;
-        window.movePlaneToParking = movePlaneToParking;
-        window.refuelPlane = refuelPlane;
-        window.maintainPlane = maintainPlane;
-        window.deselectAll = deselectAll;
-        window.undoLastAction = undoLastAction;
-        window.showRestartConfirmation = showRestartConfirmation;
-        window.closeConfirmDialog = closeConfirmDialog;
-        window.confirmRestart = confirmRestart;
-        
-        window.onload = init;
+        // Inicializar el juego cuando se carga la página
+        window.addEventListener('DOMContentLoaded', init);
     </script>
 </body>
 </html>
